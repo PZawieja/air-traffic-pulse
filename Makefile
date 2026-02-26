@@ -20,7 +20,7 @@ UV := $(shell command -v uv 2>/dev/null)
 # Dedicated database path used by `make demo` so it never overwrites real data.
 DEMO_DB := ./data/air_traffic_pulse_demo.duckdb
 
-.PHONY: help venv install setup fmt lint test ingest dbt app demo demo-app clean
+.PHONY: help venv install setup fmt lint test ingest watch dbt app demo demo-app clean
 
 # Default target — show available targets.
 help:
@@ -31,10 +31,11 @@ help:
 	@echo "  make fmt        Format and auto-fix lint (ruff)"
 	@echo "  make lint       Lint check without auto-fix"
 	@echo "  make test       Run pytest"
-	@echo "  make ingest     Fetch live aircraft states → DuckDB"
+	@echo "  make ingest     Fetch live aircraft states → DuckDB (single run)"
+	@echo "  make watch      Continuous live ingestion every 5 min (Ctrl-C to stop)"
 	@echo "  make dbt        Run dbt deps + dbt build"
 	@echo "  make app        Launch Streamlit dashboard"
-	@echo "  make demo       Offline demo: fixture ingest → dbt build"
+	@echo "  make demo       Seed 24h of synthetic data → dbt build (offline)"
 	@echo "  make demo-app   Launch dashboard against the demo database"
 	@echo "  make clean      Remove .venv and build artefacts"
 	@echo ""
@@ -99,6 +100,14 @@ test:
 ingest:
 	$(PYTHON) -m air_traffic_pulse ingest
 
+watch:
+	@echo "Continuous live ingestion every 5 minutes — Ctrl-C to stop."
+	@while true; do \
+		$(MAKE) --no-print-directory ingest; \
+		echo "Sleeping 5 min …  (Ctrl-C to stop)"; \
+		sleep 300; \
+	done
+
 dbt:
 	$(PYTHON) -m air_traffic_pulse dbt
 
@@ -110,9 +119,8 @@ app:
 # ---------------------------------------------------------------------------
 
 demo:
-	@echo "→ Demo ingest (offline fixture data) …"
-	AIR_TRAFFIC_PULSE_DEMO_MODE=1 DUCKDB_PATH=$(DEMO_DB) \
-		$(PYTHON) -m air_traffic_pulse ingest
+	@echo "→ Seeding 24 h of synthetic timeseries data …"
+	DUCKDB_PATH=$(DEMO_DB) $(PYTHON) tools/seed_demo_data.py
 	@echo "→ Building dbt models …"
 	DUCKDB_PATH=$(DEMO_DB) $(PYTHON) -m air_traffic_pulse dbt
 	@echo ""

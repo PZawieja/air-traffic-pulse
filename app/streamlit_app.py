@@ -8,7 +8,11 @@ Reads from dbt mart tables in DuckDB.  Run the pipeline first:
 
 from __future__ import annotations
 
+import os
 import pathlib
+import subprocess
+import sys
+import time
 
 import duckdb
 import pandas as pd
@@ -16,7 +20,16 @@ import streamlit as st
 
 from air_traffic_pulse.config import get_settings
 
-# ── Page config ──────────────────────────────────────────────────────────────
+# ── Constants ─────────────────────────────────────────────────────────────────
+_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+REGION_FLAGS: dict[str, str] = {
+    "berlin":    "🇩🇪 Berlin",
+    "frankfurt": "🇩🇪 Frankfurt",
+    "london":    "🇬🇧 London",
+}
+
+# ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Air Traffic Pulse",
     page_icon="✈️",
@@ -25,6 +38,44 @@ st.set_page_config(
 
 settings = get_settings()
 db_path = pathlib.Path(settings.duckdb_path)
+demo_mode = settings.air_traffic_pulse_demo_mode
+
+# ── Fetch logic (runs before any rendering) ───────────────────────────────────
+
+def _run_fetch(regions: list[str]) -> tuple[bool, str]:
+    """Trigger ingestion + dbt build, returning (success, error_message)."""
+    env = os.environ.copy()
+
+    if demo_mode:
+        # In demo mode: append 1 h of fresh synthetic snapshots to the demo DB.
+        ingest_cmd = [
+            sys.executable,
+            str(_REPO_ROOT / "tools" / "seed_demo_data.py"),
+            "--hours", "1",
+            "--bboxes", *regions,
+        ]
+    else:
+        # Live mode: call the real OpenSky API for the selected regions.
+        env["OPENSKY_BBOX_PRESETS"] = ",".join(regions)
+        ingest_cmd = [sys.executable, "-m", "air_traffic_pulse", "ingest"]
+
+    r = subprocess.run(
+        ingest_cmd, env=env, capture_output=True, text=True, cwd=str(_REPO_ROOT)
+    )
+    if r.returncode != 0:
+        return False, r.stderr or r.stdout or "Ingestion failed with no output."
+
+    # Rebuild dbt models so the marts reflect the new data.
+    dbt_bin = str(pathlib.Path(sys.executable).parent / "dbt")
+    r = subprocess.run(
+        [dbt_bin, "build", "--project-dir", "dbt", "--profiles-dir", "dbt"],
+        env=env, capture_output=True, text=True, cwd=str(_REPO_ROOT),
+    )
+    if r.returncode != 0:
+        return False, r.stderr or r.stdout or "dbt build failed with no output."
+
+    return True, ""
+
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -55,12 +106,62 @@ with st.sidebar:
         "This dashboard\n"
         "```\n\n"
         "---\n"
-        "**Refresh data**\n\n"
-        "Run `make ingest && make dbt` in a terminal, then hit **R** to reload this page. "
-        "Use `make watch` to poll every 5 minutes automatically.\n\n"
-        "---\n"
+    )
+
+    # ── Fetch panel ───────────────────────────────────────────────────────────
+    st.subheader("📡 Fetch new data")
+
+    if demo_mode:
+        st.info(
+            "Running in **demo mode** — clicking Fetch will add 1 hour of fresh "
+            "synthetic aircraft data (no real API calls).",
+            icon="🧪",
+        )
+        fetch_regions = list(REGION_FLAGS.keys())
+    else:
+        fetch_regions = st.multiselect(
+            "Regions to fetch",
+            options=list(REGION_FLAGS.keys()),
+            default=list(REGION_FLAGS.keys()),
+            format_func=lambda x: REGION_FLAGS.get(x, x),
+            help="Select which regions to poll. Fetching fewer regions is faster.",
+        )
+
+    fetch_clicked = st.button(
+        "🔄 Fetch & refresh",
+        disabled=not fetch_regions,
+        help=(
+            "Pull fresh synthetic data and rebuild the analytics layer."
+            if demo_mode
+            else "Poll the OpenSky API for the selected regions and rebuild the analytics layer."
+        ),
+    )
+
+    st.markdown("---")
+    st.caption(
+        "Use `make watch` in a terminal to poll automatically every 5 minutes."
     )
     st.caption(f"Database: `{db_path}`")
+
+
+# ── Run fetch if button was clicked ──────────────────────────────────────────
+# This runs before any data is loaded so the page renders fresh data after rerun.
+if fetch_clicked:
+    label = "Adding synthetic data" if demo_mode else f"Fetching {', '.join(REGION_FLAGS[r] for r in fetch_regions)}"
+    with st.spinner(f"{label} and rebuilding models — this takes a few seconds…"):
+        ok, err = _run_fetch(fetch_regions)
+
+    if ok:
+        st.toast("Data updated!", icon="✅")
+        time.sleep(0.5)
+        st.rerun()
+    else:
+        st.error(
+            f"Something went wrong during the fetch. Details below:\n\n```\n{err}\n```",
+            icon="🚨",
+        )
+        st.stop()
+
 
 # ── Guard: database must exist ───────────────────────────────────────────────
 if not db_path.exists():
@@ -75,7 +176,7 @@ if not db_path.exists():
 con = duckdb.connect(str(db_path), read_only=True)
 
 
-# ── Helper ───────────────────────────────────────────────────────────────────
+# ── Helper ────────────────────────────────────────────────────────────────────
 def _table_exists(schema: str, table: str) -> bool:
     return (
         con.execute(
@@ -87,7 +188,7 @@ def _table_exists(schema: str, table: str) -> bool:
     )
 
 
-# ── Guard: dbt marts must exist ──────────────────────────────────────────────
+# ── Guard: dbt marts must exist ───────────────────────────────────────────────
 _REQUIRED_MARTS = [
     "mart_latest_ingestion_run",
     "mart_latest_snapshot_by_bbox",
@@ -104,7 +205,7 @@ if missing:
     con.close()
     st.stop()
 
-# ── Load mart data ────────────────────────────────────────────────────────────
+# ── Load mart data ─────────────────────────────────────────────────────────────
 run_df = con.execute("SELECT * FROM dbt.mart_latest_ingestion_run").df()
 snapshot_df = con.execute("SELECT * FROM dbt.mart_latest_snapshot_by_bbox ORDER BY bbox_name").df()
 timeseries_df = con.execute(
@@ -121,9 +222,13 @@ if not run_df.empty:
     st.caption(
         f"Tracking live air traffic over **Berlin · Frankfurt · London** · "
         f"Last data collected: **{last_ts_str} UTC**"
+        + ("  ·  🧪 Demo mode" if demo_mode else "")
     )
 else:
-    st.caption("Tracking live air traffic over **Berlin · Frankfurt · London**")
+    st.caption(
+        "Tracking live air traffic over **Berlin · Frankfurt · London**"
+        + ("  ·  🧪 Demo mode" if demo_mode else "")
+    )
 
 st.divider()
 
@@ -136,7 +241,11 @@ st.markdown(
 )
 
 if run_df.empty:
-    st.info("No ingestion runs recorded yet.  Run **`make ingest`** to collect the first batch of data.", icon="ℹ️")
+    st.info(
+        "No ingestion runs recorded yet.  "
+        "Click **Fetch & refresh** in the sidebar to collect the first batch of data.",
+        icon="ℹ️",
+    )
 else:
     row = run_df.iloc[0]
     col1, col2, col3, col4 = st.columns(4)
@@ -181,13 +290,14 @@ st.markdown(
 )
 
 if snapshot_df.empty:
-    st.info("No aircraft data yet.  Run **`make ingest`** then **`make dbt`**.", icon="ℹ️")
+    st.info(
+        "No aircraft data yet.  Click **Fetch & refresh** in the sidebar to collect data.",
+        icon="ℹ️",
+    )
 else:
-    _REGION_FLAGS = {"berlin": "🇩🇪 Berlin", "frankfurt": "🇩🇪 Frankfurt", "london": "🇬🇧 London"}
-
     display_df = snapshot_df.copy()
     display_df["bbox_name"] = display_df["bbox_name"].map(
-        lambda x: _REGION_FLAGS.get(x, x.title())
+        lambda x: REGION_FLAGS.get(x, x.title())
     )
     display_df["avg_velocity_mps"] = display_df["avg_velocity_mps"].round(1)
 
@@ -222,11 +332,12 @@ st.markdown(
 )
 
 if timeseries_df.empty:
-    st.info("No timeseries data yet.  Run **`make ingest`** a few times and then **`make dbt`**.", icon="ℹ️")
+    st.info(
+        "No timeseries data yet.  Click **Fetch & refresh** in the sidebar to collect data.",
+        icon="ℹ️",
+    )
 else:
-    available_bboxes = sorted(timeseries_df["bbox_name"].unique().tolist())
-    _REGION_LABELS = {"berlin": "🇩🇪 Berlin", "frankfurt": "🇩🇪 Frankfurt", "london": "🇬🇧 London"}
-    label_to_key = {_REGION_LABELS.get(b, b.title()): b for b in available_bboxes}
+    label_to_key = {v: k for k, v in REGION_FLAGS.items() if k in timeseries_df["bbox_name"].values}
 
     col_sel, col_win = st.columns([2, 2])
     selected_label = col_sel.selectbox(
@@ -255,14 +366,15 @@ else:
     if n_points == 0:
         st.info(
             f"No data in the selected window ({window_hours}h). "
-            "Try widening the time window, or run **`make ingest`** to add fresh data.",
+            "Try widening the time window, or click **Fetch & refresh** in the sidebar.",
             icon="ℹ️",
         )
     else:
         if n_points < 3:
             st.warning(
-                f"Only **{n_points}** data point(s) visible — run `make ingest` a few more times "
-                f"to build a meaningful chart. ({total_points} total buckets in the database)",
+                f"Only **{n_points}** data point(s) visible — click **Fetch & refresh** a few "
+                f"more times to build a meaningful chart. "
+                f"({total_points} total buckets in the database)",
                 icon="💡",
             )
 
@@ -279,5 +391,5 @@ else:
         st.caption(
             f"Showing **{n_points}** of {total_points} total 5-minute buckets · "
             f"region: **{selected_label}** · "
-            "run `make ingest` to add more data points"
+            "click Fetch & refresh to add more data points"
         )

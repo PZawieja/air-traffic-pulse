@@ -30,7 +30,7 @@ def _usage() -> None:
 
 
 def _run_ingest() -> None:
-    from ingestion.load_states import main as ingest_main  # type: ignore[import]
+    from ingestion.load_states import main as ingest_main
 
     log.info("Starting ingestion run …")
     ingest_main()

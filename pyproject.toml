@@ -52,3 +52,5 @@ ignore = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Ensure repo root is on sys.path so `ingestion` and `warehouse` packages are importable.
+pythonpath = ["."]

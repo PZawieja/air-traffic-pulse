@@ -57,9 +57,10 @@ def _run_dbt() -> None:
 
 
 def _run_app() -> None:
-    log.info("Launching Streamlit dashboard …")
+    _streamlit_bin = str(pathlib.Path(sys.executable).parent / "streamlit")
+    log.info("Launching Streamlit dashboard …  (%s)", _streamlit_bin)
     result = subprocess.run(
-        ["streamlit", "run", "app/streamlit_app.py"],
+        [_streamlit_bin, "run", "app/streamlit_app.py"],
         check=False,
     )
     sys.exit(result.returncode)

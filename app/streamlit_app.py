@@ -79,13 +79,46 @@ def _run_fetch(regions: list[str]) -> tuple[bool, str]:
     return True, ""
 
 
+# ── Business presentation helpers ─────────────────────────────────────────────
+
+
+def _traffic_status(z: object, direction: object) -> str:
+    """Convert an internal deviation score to a business-friendly status label."""
+    if z is None or (isinstance(z, float) and pd.isna(z)):
+        return "✓ Normal"
+    z_f = float(z)  # type: ignore[arg-type]
+    if abs(z_f) >= 3:
+        return "🔺 Unusual Spike" if (direction == "spike" or z_f > 0) else "🔻 Unusual Drop"
+    if abs(z_f) >= 2:
+        return "⚠ Elevated"
+    return "✓ Normal"
+
+
+def _deviation_pct(current: object, baseline: object) -> str:
+    """Format the % deviation from normal level for display."""
+    if baseline is None or (isinstance(baseline, float) and pd.isna(baseline)):
+        return "—"
+    b = float(baseline)  # type: ignore[arg-type]
+    if b == 0:
+        return "—"
+    pct = (float(current) - b) / b * 100  # type: ignore[arg-type]
+    return f"+{pct:.0f}%" if pct >= 0 else f"{pct:.0f}%"
+
+
+def _fmt_trend(val: object) -> str:
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return "—"
+    v = float(val)  # type: ignore[arg-type]
+    return f"+{v:.0f}%" if v >= 0 else f"{v:.0f}%"
+
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.title("✈️ Air Traffic Pulse")
     st.markdown(
         "Real-time air-traffic analytics built on open data.\n\n"
         "**What this shows**\n\n"
-        "Aircraft currently airborne or taxiing over three European cities, "
+        "Aircraft currently airborne or taxiing over four European cities, "
         "sourced from the [OpenSky Network](https://opensky-network.org/) — "
         "a crowd-sourced ADS-B receiver network that provides free, live "
         "position data for commercial and private flights.\n\n"
@@ -110,6 +143,33 @@ with st.sidebar:
         "```\n\n"
         "---\n"
     )
+
+    with st.expander("ℹ️ How traffic monitoring works"):
+        st.markdown(
+            "**Detecting unusual activity**\n\n"
+            "We continuously track what normal traffic looks like for each region "
+            "by analysing recent historical patterns. When current traffic deviates "
+            "significantly from that pattern, it is flagged automatically.\n\n"
+            "**Status labels explained**\n\n"
+            "- **✓ Normal** — traffic matches typical patterns\n"
+            "- **⚠ Elevated** — noticeably higher or lower than usual, "
+            "but within an acceptable range\n"
+            "- **🔺 Unusual Spike** — significantly more aircraft than the historical pattern\n"
+            "- **🔻 Unusual Drop** — significantly fewer aircraft than the historical pattern\n\n"
+            "---\n"
+        )
+        with st.expander("Technical details"):
+            st.markdown(
+                "A 28-day rolling baseline (mean and population standard deviation) "
+                "is computed per region from the `mart_traffic_baseline_28d` dbt model. "
+                "A deviation score (z-score) is calculated for each 5-minute bucket:\n\n"
+                "`z = (current − baseline_mean) / baseline_std`\n\n"
+                "- **Anomaly** (Unusual Spike/Drop): `|z| ≥ 3`\n"
+                "- **Elevated**: `|z| ≥ 2`\n\n"
+                "The baseline is recomputed on every `dbt build`."
+            )
+
+    st.markdown("---")
 
     # ── Fetch panel ───────────────────────────────────────────────────────────
     st.subheader("📡 Fetch new data")
@@ -250,7 +310,7 @@ st.divider()
 st.subheader("🔄 Pipeline status")
 st.markdown(
     "Shows the outcome of the most recent data collection run. "
-    "Each run polls the OpenSky API for all three regions and writes "
+    "Each run polls the OpenSky API for all four regions and writes "
     "the raw aircraft state vectors into DuckDB."
 )
 
@@ -333,82 +393,90 @@ else:
 
 st.divider()
 
-# ── Section 3: Traffic insights ───────────────────────────────────────────────
-st.subheader("🧠 Traffic insights")
+# ── Section 3: Traffic vs Normal Activity ─────────────────────────────────────
+st.subheader("📊 Traffic vs Normal Activity")
 st.markdown(
-    "Statistical summary for the most recent 5-minute bucket per region. "
-    "The **z-score** measures how many standard deviations the current count "
-    "is from the 28-day rolling baseline — values beyond ±3 are flagged as anomalies. "
-    "**1h trend** is the % change vs the preceding hour's average."
+    "How does current traffic in each region compare to what we'd normally expect? "
+    "The table below highlights any regions where traffic is running unusually high or low."
 )
 
 if insights_df.empty:
     st.info("No insights data yet. Click **Fetch & refresh** in the sidebar.", icon="ℹ️")
 else:
-
-    def _status_label(row: pd.Series) -> str:
-        if row.get("latest_is_anomaly"):
-            direction = row.get("latest_anomaly_direction")
-            if direction == "spike":
-                return "⚠️ Spike"
-            if direction == "drop":
-                return "⬇️ Drop"
-            return "⚠️ Anomaly"
-        return "✅ Normal"
-
-    def _fmt_z(val: object) -> str:
-        if val is None or (isinstance(val, float) and pd.isna(val)):
-            return "—"
-        return f"+{val:.1f}" if float(val) >= 0 else f"{float(val):.1f}"  # type: ignore[arg-type]
-
-    def _fmt_pct(val: object) -> str:
-        if val is None or (isinstance(val, float) and pd.isna(val)):
-            return "—"
-        return f"+{val:.1f}%" if float(val) >= 0 else f"{float(val):.1f}%"  # type: ignore[arg-type]
-
     ins = insights_df.copy()
     ins["Region"] = ins["bbox_name"].map(lambda x: REGION_FLAGS.get(x, x.title()))
-    ins["Status"] = ins.apply(_status_label, axis=1)
-    ins["Aircraft now"] = ins["latest_aircraft_count"]
-    ins["Baseline avg"] = ins["baseline_mean_aircraft"].round(1)
-    ins["Baseline σ"] = ins["baseline_std_aircraft"].round(1)
-    ins["Z-score"] = ins["latest_z_aircraft"].apply(_fmt_z)
-    ins["1h trend"] = ins["trend_1h_pct"].apply(_fmt_pct)
-
-    insight_cols = [
-        "Region",
-        "Status",
-        "Aircraft now",
-        "Baseline avg",
-        "Baseline σ",
-        "Z-score",
-        "1h trend",
-    ]
-    st.dataframe(ins[insight_cols], width="stretch", hide_index=True)
-    st.caption(
-        "Z-score = (current − 28d mean) / 28d std.  "
-        "Anomaly threshold: |z| ≥ 3.  "
-        "1h trend compares latest bucket to the average of the preceding 12 buckets."
+    ins["Status"] = ins.apply(
+        lambda r: _traffic_status(r["latest_z_aircraft"], r["latest_anomaly_direction"]),
+        axis=1,
     )
+    ins["Current Traffic"] = ins["latest_aircraft_count"]
+    ins["Normal Level"] = ins["baseline_mean_aircraft"].round(0).fillna(0).astype(int)
+    ins["Deviation"] = ins.apply(
+        lambda r: _deviation_pct(r["latest_aircraft_count"], r["baseline_mean_aircraft"]),
+        axis=1,
+    )
+    ins["1h Trend"] = ins["trend_1h_pct"].apply(_fmt_trend)
+
+    business_cols = ["Region", "Status", "Current Traffic", "Normal Level", "Deviation", "1h Trend"]
+    st.dataframe(ins[business_cols], width="stretch", hide_index=True)
+    st.caption(
+        "**Current Traffic** — aircraft observed in the latest 5-minute window.  "
+        "**Normal Level** — average based on recent historical patterns.  "
+        "**Deviation** — how far current traffic is from the normal level.  "
+        "**1h Trend** — change vs the preceding hour's average."
+    )
+
+    with st.expander("ℹ️ How is 'Normal Traffic' calculated?"):
+        st.markdown(
+            "We continuously learn what normal traffic looks like for each region by "
+            "analysing recent historical patterns.\n\n"
+            "**Normal Level** is the average number of aircraft observed over recent history. "
+            "When current traffic deviates significantly from that average, it is flagged "
+            "with a status indicator.\n\n"
+            "**Status labels:**\n\n"
+            "- **✓ Normal** — traffic is in line with typical patterns\n"
+            "- **⚠ Elevated** — noticeably higher or lower than usual, "
+            "but within a tolerable range\n"
+            "- **🔺 Unusual Spike** — significantly more aircraft than the historical pattern\n"
+            "- **🔻 Unusual Drop** — significantly fewer aircraft than the historical pattern\n"
+        )
+        with st.expander("Technical note"):
+            st.markdown(
+                "The model uses a rolling historical baseline and standard deviation "
+                "(z-score approach). A deviation score is computed for each 5-minute bucket:\n\n"
+                "`z = (current − baseline_mean) / baseline_std`\n\n"
+                "An anomaly is flagged when the deviation exceeds 3 standard deviations "
+                "(`|z| ≥ 3`). Elevated is flagged at `|z| ≥ 2`. "
+                "The baseline window covers the trailing 28 days and is recomputed on every "
+                "`dbt build`."
+            )
 
     # Show recent anomaly events if any exist.
     if not anomalies_df.empty:
-        with st.expander(f"🚨 Recent anomaly events ({len(anomalies_df)} detected)", expanded=True):
+        with st.expander(
+            f"🚨 Unusual activity events ({len(anomalies_df)} detected)", expanded=True
+        ):
             anom_display = anomalies_df.head(20).copy()
             anom_display["bucket_ts"] = anom_display["bucket_ts"].astype("datetime64[us, UTC]")
             anom_display["Region"] = anom_display["bbox_name"].map(
                 lambda x: REGION_FLAGS.get(x, x.title())
             )
-            anom_display["Direction"] = (
-                anom_display["anomaly_direction"].fillna("—").str.capitalize()
+            anom_display["Status"] = anom_display.apply(
+                lambda r: _traffic_status(r["z_aircraft"], r["anomaly_direction"]),
+                axis=1,
             )
-            anom_display["Z-score"] = anom_display["z_aircraft"].apply(_fmt_z)
             anom_display["Aircraft"] = anom_display["aircraft_count"]
-            anom_display["Baseline"] = anom_display["baseline_mean_aircraft"].round(1)
+            anom_display["Normal Level"] = (
+                anom_display["baseline_mean_aircraft"].round(0).astype(int)
+            )
+            anom_display["Deviation"] = anom_display.apply(
+                lambda r: _deviation_pct(r["aircraft_count"], r["baseline_mean_aircraft"]),
+                axis=1,
+            )
             anom_display["Time (UTC)"] = anom_display["bucket_ts"].dt.strftime("%Y-%m-%d %H:%M")
             st.dataframe(
                 anom_display[
-                    ["Time (UTC)", "Region", "Direction", "Aircraft", "Baseline", "Z-score"]
+                    ["Time (UTC)", "Region", "Status", "Aircraft", "Normal Level", "Deviation"]
                 ],
                 width="stretch",
                 hide_index=True,
@@ -423,7 +491,8 @@ st.markdown(
     "detected in the selected region during that interval.\n\n"
     "- **All aircraft** — every transponder signal received\n"
     "- **GPS-positioned** — the subset with a valid latitude/longitude fix\n"
-    "- The gap between the two lines is aircraft whose transponder is active "
+    "- **Normal level** — the historical average for this region (28-day baseline)\n"
+    "- The gap between All and GPS-positioned is aircraft whose transponder is active "
     "but whose position has not yet been resolved\n\n"
     "Peaks during the day and a dip overnight are typical for European airspace."
 )
@@ -475,6 +544,36 @@ else:
                 icon="💡",
             )
 
+        # Context sentence: unusual activity check for this region in the last 24h.
+        recent_cutoff = bbox_df["bucket_ts"].max() - pd.Timedelta(hours=24)
+        bbox_anomalies = anomalies_df[anomalies_df["bbox_name"] == selected_bbox].copy()
+        if not bbox_anomalies.empty:
+            bbox_anomalies["bucket_ts"] = bbox_anomalies["bucket_ts"].astype("datetime64[us, UTC]")
+            recent_events = bbox_anomalies[bbox_anomalies["bucket_ts"] >= recent_cutoff]
+        else:
+            recent_events = bbox_anomalies  # empty
+
+        if not recent_events.empty:
+            st.warning(
+                f"⚠ Unusual activity detected in **{selected_label}** in the last 24 hours "
+                f"({len(recent_events)} event(s)). See the activity log below the chart.",
+                icon="🔔",
+            )
+        else:
+            st.success(
+                f"Traffic in **{selected_label}** is within the normal operating range.",
+                icon="✓",
+            )
+
+        # Add historical normal level as a reference line.
+        baseline_mean: float | None = None
+        if not insights_df.empty:
+            row_ins = insights_df[insights_df["bbox_name"] == selected_bbox]
+            if not row_ins.empty:
+                val = row_ins.iloc[0]["baseline_mean_aircraft"]
+                if val is not None and not (isinstance(val, float) and pd.isna(val)):
+                    baseline_mean = float(val)
+
         chart_df = (
             filtered_df.set_index("bucket_ts")[["aircraft_count", "positioned_aircraft_count"]]
             .rename(
@@ -486,6 +585,9 @@ else:
             .sort_index()
         )
 
+        if baseline_mean is not None:
+            chart_df["Normal level (28d avg)"] = baseline_mean
+
         st.line_chart(chart_df)
         st.caption(
             f"Showing **{n_points}** of {total_points} total 5-minute buckets · "
@@ -493,27 +595,30 @@ else:
             "click Fetch & refresh to add more data points"
         )
 
-        # ── Anomaly table for this bbox ────────────────────────────────────
-        bbox_anomalies = anomalies_df[anomalies_df["bbox_name"] == selected_bbox].copy()
-
-        if bbox_anomalies.empty:
-            st.caption("No anomaly buckets detected for this region in the current dataset.")
-        else:
+        # Unusual activity log for this bbox.
+        if not bbox_anomalies.empty:
             with st.expander(
-                f"🚨 Anomaly buckets for {selected_label} ({len(bbox_anomalies)} total)"
+                f"🚨 Unusual activity log for {selected_label} ({len(bbox_anomalies)} events)"
             ):
                 ba = bbox_anomalies.head(10).copy()
-                ba["bucket_ts"] = ba["bucket_ts"].astype("datetime64[us, UTC]")
                 ba["Time (UTC)"] = ba["bucket_ts"].dt.strftime("%Y-%m-%d %H:%M")
-                ba["Direction"] = ba["anomaly_direction"].fillna("—").str.capitalize()
+                ba["Status"] = ba.apply(
+                    lambda r: _traffic_status(r["z_aircraft"], r["anomaly_direction"]),
+                    axis=1,
+                )
                 ba["Aircraft"] = ba["aircraft_count"]
-                ba["Baseline"] = ba["baseline_mean_aircraft"].round(1)
-                ba["Z-score"] = ba["z_aircraft"].apply(_fmt_z)
+                ba["Normal Level"] = ba["baseline_mean_aircraft"].round(0).astype(int)
+                ba["Deviation"] = ba.apply(
+                    lambda r: _deviation_pct(r["aircraft_count"], r["baseline_mean_aircraft"]),
+                    axis=1,
+                )
                 st.dataframe(
-                    ba[["Time (UTC)", "Direction", "Aircraft", "Baseline", "Z-score"]],
+                    ba[["Time (UTC)", "Status", "Aircraft", "Normal Level", "Deviation"]],
                     width="stretch",
                     hide_index=True,
                 )
+        else:
+            st.caption(f"No unusual activity detected for {selected_label} in the current dataset.")
 
 # ── Footer ────────────────────────────────────────────────────────────────────
 st.divider()

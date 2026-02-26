@@ -8,8 +8,23 @@
 
 A self-contained analytics-engineering portfolio project that ingests live
 ADS-B aircraft position data, transforms it with dbt, and surfaces traffic
-intensity and statistical anomalies in an interactive dashboard — entirely
+intensity and anomaly detection in an interactive dashboard — entirely
 on your laptop with no cloud dependencies.
+
+---
+
+## What Makes This Intelligent (Not Just a Dashboard)
+
+- **Detects unusual traffic patterns** — automatically flags when aircraft counts
+  deviate significantly from what's historically normal for that region
+- **Compares current activity to historical baseline** — each region has a rolling
+  28-day normal traffic level calculated entirely in SQL
+- **Flags spikes and drops automatically** — no manual threshold-setting; the
+  system self-calibrates as patterns evolve
+- **Surfaces business meaning first** — the dashboard shows plain-language status
+  labels ("Unusual Spike", "Normal") with statistical detail available on demand
+- **Designed for operational monitoring** — built to run continuously, with an
+  offline demo mode and a full CI pipeline
 
 ---
 
@@ -33,7 +48,7 @@ actionable signal (not just counts).
 - **Append-only raw snapshot log** — every API call produces immutable rows in `raw.opensky_states`; no in-place updates
 - **Run audit trail** — `raw.ingestion_runs` tracks every pipeline execution with status lifecycle and row counts
 - **dbt lineage** — exposures declare the Streamlit dashboard as a downstream consumer of the marts
-- **Statistical anomaly detection** — 28-day rolling z-score computed entirely in dbt SQL; no Python ML libraries
+- **Automatic anomaly detection** — 28-day rolling baseline comparison computed entirely in dbt SQL; no Python ML libraries
 - **Offline demo mode** — synthetic 48h timeseries with injected anomaly events; runs without network or credentials
 - **CI that runs the full pipeline** — GitHub Actions lints, tests, seeds demo data, and runs `dbt build` on every push
 
@@ -46,9 +61,9 @@ actionable signal (not just counts).
 | **Aircraft count** | Distinct ICAO24 transponder addresses per 5-min bucket |
 | **GPS-positioned** | Subset with a valid latitude/longitude fix |
 | **On-ground count** | Aircraft reporting ground contact in latest snapshot |
-| **Baseline mean/std** | Population statistics over the trailing 28 days |
-| **Traffic z-score** | `(current − baseline_mean) / baseline_std` per bucket |
-| **Anomaly flag** | `\|z\| ≥ 3` in either the primary or positioned series |
+| **Normal level** | Historical average traffic for a region (trailing 28-day baseline) |
+| **Traffic status** | Plain-language label: Normal / Elevated / Unusual Spike / Unusual Drop |
+| **Deviation %** | How far current traffic is from the normal level, in percent |
 | **1h trend %** | `(latest − avg_preceding_1h) / avg_preceding_1h × 100` |
 
 ---
@@ -59,7 +74,7 @@ actionable signal (not just counts).
 |---|---|
 | **API ingestion** | Typed HTTP client with exponential back-off, 429/5xx retry, optional Basic Auth |
 | **Raw → staging → marts modeling** | dbt-duckdb project with views → tables, full lineage |
-| **Statistical analysis in SQL** | 28-day rolling z-scores and anomaly detection in dbt mart SQL |
+| **Statistical analysis in SQL** | 28-day rolling baseline and deviation-based anomaly detection in dbt mart SQL |
 | **Data quality** | 50+ dbt tests: `not_null`, `unique`, `accepted_values`, `unique_combination` |
 | **Semantic layer** | MetricFlow semantic models + 3 metrics; time spine for trending |
 | **Data governance** | dbt exposure, data contract doc, CHANGELOG, VERSION |
@@ -296,3 +311,27 @@ Override with: `PYTHON3=/path/to/python3.11 make setup`
 **Changing the bbox list**
 Edit `OPENSKY_BBOX_PRESETS` in your `.env`.  To add a new city, also add its
 bounding box to `BBOX_PRESETS` in `src/air_traffic_pulse/config.py`.
+
+---
+
+## Technical Appendix
+
+### Anomaly detection method
+
+The dashboard's traffic status labels (Normal / Elevated / Unusual Spike / Unusual Drop)
+are derived from a **z-score** computed in dbt:
+
+```
+z = (current_aircraft_count − baseline_mean) / baseline_std
+```
+
+Where:
+- `baseline_mean` and `baseline_std` are population statistics over the **trailing 28 days**
+  of 5-minute buckets, computed in `mart_traffic_baseline_28d`
+- A **z-score ≥ 3** (in absolute value) is classified as an anomaly (Spike or Drop)
+- A **z-score ≥ 2** (in absolute value) is classified as Elevated
+- All other values are classified as Normal
+
+The z-score is computed per bounding-box region.  It is stored internally in
+`mart_traffic_anomalies_5min` but is not surfaced directly in the dashboard UI —
+only the plain-language status label and deviation percentage are shown to users.

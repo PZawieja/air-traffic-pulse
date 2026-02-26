@@ -37,6 +37,7 @@ BBOX_PRESETS: dict[str, dict[str, float]] = {
     "berlin":    {"lamin": 52.3, "lomin": 13.0, "lamax": 52.7, "lomax": 13.8},
     "frankfurt": {"lamin": 49.9, "lomin":  8.3, "lamax": 50.2, "lomax":  8.9},
     "london":    {"lamin": 51.3, "lomin": -0.6, "lamax": 51.7, "lomax":  0.3},
+    "warsaw":    {"lamin": 52.0, "lomin": 20.7, "lamax": 52.4, "lomax": 21.3},
 }
 
 # Airline callsign prefixes typical for each city's main airport.
@@ -44,12 +45,14 @@ _CALLSIGN_PREFIXES: dict[str, list[str]] = {
     "berlin":    ["DLH", "EWG", "BER", "RYR", "WZZ", "EZY", "THY", "SAS"],
     "frankfurt": ["DLH", "LHA", "CFG", "EZY", "THY", "UAE", "ANA", "SIA"],
     "london":    ["BAW", "EZY", "VIR", "TOM", "RYR", "IBE", "AFR", "KLM"],
+    "warsaw":    ["LOT", "RYR", "WZZ", "EZY", "DLH", "AFL", "SAS", "THY"],
 }
 
 _ORIGIN_COUNTRIES: dict[str, list[str]] = {
     "berlin":    ["Germany", "Germany", "Germany", "Ireland", "Hungary", "Turkey", "United Kingdom"],
     "frankfurt": ["Germany", "Germany", "Germany", "Turkey", "United Arab Emirates", "Japan", "Singapore"],
     "london":    ["United Kingdom", "United Kingdom", "Ireland", "Spain", "France", "Netherlands", "United States"],
+    "warsaw":    ["Poland", "Poland", "Poland", "Ireland", "Hungary", "Germany", "Russia"],
 }
 
 # Peak aircraft count per bbox at midday.
@@ -57,6 +60,7 @@ _PEAK_AIRCRAFT: dict[str, int] = {
     "berlin":    22,
     "frankfurt": 28,
     "london":    32,
+    "warsaw":    18,
 }
 
 # Number of distinct aircraft kept in each bbox's pool.

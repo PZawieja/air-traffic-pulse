@@ -11,9 +11,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # Built-in bounding-box presets  (lamin, lomin, lamax, lomax)
 # ---------------------------------------------------------------------------
 BBOX_PRESETS: dict[str, dict[str, float]] = {
-    "berlin": {"lamin": 52.3, "lomin": 13.0, "lamax": 52.7, "lomax": 13.8},
-    "frankfurt": {"lamin": 49.9, "lomin": 8.3, "lamax": 50.2, "lomax": 8.9},
-    "london": {"lamin": 51.3, "lomin": -0.6, "lamax": 51.7, "lomax": 0.3},
+    "berlin":    {"lamin": 52.3, "lomin": 13.0, "lamax": 52.7, "lomax": 13.8},
+    "frankfurt": {"lamin": 49.9, "lomin":  8.3, "lamax": 50.2, "lomax":  8.9},
+    "london":    {"lamin": 51.3, "lomin": -0.6, "lamax": 51.7, "lomax":  0.3},
+    "warsaw":    {"lamin": 52.0, "lomin": 20.7, "lamax": 52.4, "lomax": 21.3},
+}
+
+# Human-readable display names with country flags, used in the dashboard.
+REGION_DISPLAY: dict[str, str] = {
+    "berlin":    "🇩🇪 Berlin",
+    "frankfurt": "🇩🇪 Frankfurt",
+    "london":    "🇬🇧 London",
+    "warsaw":    "🇵🇱 Warsaw",
 }
 
 

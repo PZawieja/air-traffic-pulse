@@ -70,9 +70,10 @@ _UPDATE_RUN = """
 _FIXTURES_DIR = pathlib.Path(__file__).parent.parent / "tests" / "fixtures"
 
 _DEMO_FIXTURE_MAP: dict[str, pathlib.Path] = {
-    "berlin": _FIXTURES_DIR / "opensky_states_sample.json",
+    "berlin":    _FIXTURES_DIR / "opensky_states_sample.json",
     "frankfurt": _FIXTURES_DIR / "opensky_states_sample.json",
-    "london": _FIXTURES_DIR / "opensky_states_sample_london.json",
+    "london":    _FIXTURES_DIR / "opensky_states_sample_london.json",
+    "warsaw":    _FIXTURES_DIR / "opensky_states_sample.json",
 }
 
 

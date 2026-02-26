@@ -27,7 +27,7 @@ sources:
           - name: bbox_name
             description: >
               Named bounding-box preset used for this poll
-              (e.g. berlin, frankfurt, london).
+              (e.g. berlin, frankfurt, london, warsaw).
           - name: icao24
             description: >
               ICAO 24-bit Mode S transponder address in lower-case hexadecimal.

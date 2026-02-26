@@ -18,16 +18,13 @@ import duckdb
 import pandas as pd
 import streamlit as st
 
-from air_traffic_pulse.config import get_settings
+from air_traffic_pulse.config import BBOX_PRESETS, REGION_DISPLAY, get_settings
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 _REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
-REGION_FLAGS: dict[str, str] = {
-    "berlin":    "🇩🇪 Berlin",
-    "frankfurt": "🇩🇪 Frankfurt",
-    "london":    "🇬🇧 London",
-}
+# REGION_DISPLAY comes from config.py — adding a new preset there is enough.
+REGION_FLAGS = REGION_DISPLAY  # alias kept for readability in this file
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -93,7 +90,8 @@ with st.sidebar:
         "|---|---|\n"
         "| 🇩🇪 Berlin | ~50 × 60 km box |\n"
         "| 🇩🇪 Frankfurt | ~35 × 55 km box |\n"
-        "| 🇬🇧 London | ~45 × 90 km box |\n\n"
+        "| 🇬🇧 London | ~45 × 90 km box |\n"
+        "| 🇵🇱 Warsaw | ~45 × 65 km box |\n\n"
         "---\n"
         "**Data pipeline**\n\n"
         "```\n"
@@ -121,9 +119,9 @@ with st.sidebar:
     else:
         fetch_regions = st.multiselect(
             "Regions to fetch",
-            options=list(REGION_FLAGS.keys()),
-            default=list(REGION_FLAGS.keys()),
-            format_func=lambda x: REGION_FLAGS.get(x, x),
+            options=list(BBOX_PRESETS.keys()),
+            default=list(BBOX_PRESETS.keys()),
+            format_func=lambda x: REGION_FLAGS.get(x, x.title()),
             help="Select which regions to poll. Fetching fewer regions is faster.",
         )
 

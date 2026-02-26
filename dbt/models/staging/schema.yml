@@ -19,7 +19,7 @@ models:
           - not_null
 
       - name: bbox_name
-        description: Named bounding-box preset (e.g. berlin, frankfurt, london).
+        description: Named bounding-box preset (e.g. berlin, frankfurt, london, warsaw).
         tests:
           - not_null
 

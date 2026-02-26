@@ -9,7 +9,7 @@ models:
       Overview table.
     columns:
       - name: bbox_name
-        description: Named bounding-box preset (e.g. berlin, frankfurt, london).
+        description: Named bounding-box preset (e.g. berlin, frankfurt, london, warsaw).
         tests:
           - unique
           - not_null

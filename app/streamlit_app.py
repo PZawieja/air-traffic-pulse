@@ -409,6 +409,10 @@ else:
         lambda r: _traffic_status(r["latest_z_aircraft"], r["latest_anomaly_direction"]),
         axis=1,
     )
+    ins["Health Score"] = ins["traffic_health_score"].apply(
+        lambda v: int(v) if v is not None and not (isinstance(v, float) and pd.isna(v)) else "—"
+    )
+    ins["Health"] = ins["traffic_health_label"].fillna("—")
     ins["Current Traffic"] = ins["latest_aircraft_count"]
     ins["Normal Level"] = ins["baseline_mean_aircraft"].round(0).fillna(0).astype(int)
     ins["Deviation"] = ins.apply(
@@ -417,9 +421,19 @@ else:
     )
     ins["1h Trend"] = ins["trend_1h_pct"].apply(_fmt_trend)
 
-    business_cols = ["Region", "Status", "Current Traffic", "Normal Level", "Deviation", "1h Trend"]
+    business_cols = [
+        "Region",
+        "Status",
+        "Health Score",
+        "Health",
+        "Current Traffic",
+        "Normal Level",
+        "Deviation",
+        "1h Trend",
+    ]
     st.dataframe(ins[business_cols], width="stretch", hide_index=True)
     st.caption(
+        "**Health Score** — 0–100, higher is healthier (closer to normal).  "
         "**Current Traffic** — aircraft observed in the latest 5-minute window.  "
         "**Normal Level** — average based on recent historical patterns.  "
         "**Deviation** — how far current traffic is from the normal level.  "
@@ -448,7 +462,10 @@ else:
                 "An anomaly is flagged when the deviation exceeds 3 standard deviations "
                 "(`|z| ≥ 3`). Elevated is flagged at `|z| ≥ 2`. "
                 "The baseline window covers the trailing 28 days and is recomputed on every "
-                "`dbt build`."
+                "`dbt build`.\n\n"
+                "**Health Score** is derived via exponential decay of the deviation severity:\n\n"
+                "`score = 100 × exp(−0.35 × |z|)`, clamped to 0–100.\n\n"
+                "Label thresholds: Excellent ≥ 90 · Good ≥ 70 · Watch ≥ 40 · Investigate < 40."
             )
 
     # Show recent anomaly events if any exist.
@@ -520,6 +537,33 @@ else:
     )
 
     selected_bbox = label_to_key[selected_label]
+
+    # Compact health indicator for the selected region.
+    if not insights_df.empty:
+        ins_row = insights_df[insights_df["bbox_name"] == selected_bbox]
+        if not ins_row.empty:
+            _score = ins_row.iloc[0]["traffic_health_score"]
+            _label = ins_row.iloc[0]["traffic_health_label"]
+            _score_str = (
+                str(int(_score))
+                if _score is not None and not (isinstance(_score, float) and pd.isna(_score))
+                else "—"
+            )
+            _label_str = (
+                _label
+                if _label is not None and not (isinstance(_label, float) and pd.isna(_label))
+                else "—"
+            )  # noqa: E501
+            st.metric(
+                label="Current Health Score",
+                value=f"{_score_str} / 100",
+                help=(
+                    f"Health: **{_label_str}**  —  "
+                    "Summarises how close current traffic is to its normal range. "
+                    "100 = perfectly normal. See 'How is Normal Traffic calculated?' above for details."
+                ),
+            )
+
     bbox_df = timeseries_df[timeseries_df["bbox_name"] == selected_bbox].copy()
     bbox_df["bucket_ts"] = bbox_df["bucket_ts"].astype("datetime64[us, UTC]")
 
@@ -619,6 +663,31 @@ else:
                 )
         else:
             st.caption(f"No unusual activity detected for {selected_label} in the current dataset.")
+
+# ── 60-second demo script ─────────────────────────────────────────────────────
+st.divider()
+with st.expander("🎤 60-second executive demo script", expanded=False):
+    st.markdown(
+        "Use this script when walking a stakeholder through the dashboard for the first time.\n\n"
+        "---\n\n"
+        '**1.** "This app monitors air traffic intensity across four European regions '
+        "and automatically compares it to what's historically normal — no manual "
+        'threshold-setting required."\n\n'
+        '**2.** "At the top you see pipeline health: when data was last collected, '
+        'how many records were loaded, and whether the run succeeded."\n\n'
+        "**3.** \"This table shows each region's current traffic vs its normal level. "
+        "The Health Score (0–100) gives a single at-a-glance indicator — 100 is "
+        'perfectly normal, lower values flag something worth investigating."\n\n'
+        '**4.** "The timeseries shows how traffic evolves over time. Unusual spikes '
+        "or drops are automatically logged in the activity log below the chart — "
+        'you can drill in to see exactly when and how severe each event was."\n\n'
+        '**5.** "The full statistical methodology is available on demand in the '
+        "expandable Technical note sections — but the default view is designed to "
+        'stay business-first at all times."\n\n'
+        "---\n\n"
+        "*Tip: click **Fetch & refresh** in the sidebar to add a new data point live "
+        "during the demo.*"
+    )
 
 # ── Footer ────────────────────────────────────────────────────────────────────
 st.divider()

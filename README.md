@@ -23,6 +23,8 @@ on your laptop with no cloud dependencies.
   system self-calibrates as patterns evolve
 - **Surfaces business meaning first** — the dashboard shows plain-language status
   labels ("Unusual Spike", "Normal") with statistical detail available on demand
+- **Traffic Health Score (0–100)** — a single indicator per region summarising
+  deviation from normal; 100 is perfectly normal, lower scores flag investigation
 - **Designed for operational monitoring** — built to run continuously, with an
   offline demo mode and a full CI pipeline
 
@@ -63,6 +65,8 @@ actionable signal (not just counts).
 | **On-ground count** | Aircraft reporting ground contact in latest snapshot |
 | **Normal level** | Historical average traffic for a region (trailing 28-day baseline) |
 | **Traffic status** | Plain-language label: Normal / Elevated / Unusual Spike / Unusual Drop |
+| **Health Score** | 0–100 summary indicator; 100 = perfectly normal, lower = investigate |
+| **Health label** | Excellent (≥ 90) / Good (70–89) / Watch (40–69) / Investigate (< 40) |
 | **Deviation %** | How far current traffic is from the normal level, in percent |
 | **1h trend %** | `(latest − avg_preceding_1h) / avg_preceding_1h × 100` |
 
@@ -121,6 +125,29 @@ actionable signal (not just counts).
 | Overview | Timeseries |
 |:---:|:---:|
 | ![Overview](docs/screenshot_overview.png) | ![Timeseries](docs/screenshot_timeseries.png) |
+
+---
+
+## 60-second demo script
+
+Use this when walking a stakeholder through the dashboard for the first time:
+
+1. **"This app monitors air traffic intensity across four European regions and
+   automatically compares it to what's historically normal — no manual
+   threshold-setting required."**
+2. **"At the top you see pipeline health: when data was last collected, how many
+   records were loaded, and whether the run succeeded."**
+3. **"This table shows each region's current traffic vs its normal level.
+   The Health Score (0–100) gives a single at-a-glance indicator — 100 is
+   perfectly normal, lower values flag something worth investigating."**
+4. **"The timeseries shows how traffic evolves over time. Unusual spikes or drops
+   are automatically logged — you can drill in to see exactly when and how
+   severe each event was."**
+5. **"The full statistical methodology is available on demand in expandable
+   Technical note sections — but the default view stays business-first."**
+
+> **Tip:** click **Fetch & refresh** in the sidebar to add a live data point
+> during the demo.
 
 ---
 
@@ -335,3 +362,23 @@ Where:
 The z-score is computed per bounding-box region.  It is stored internally in
 `mart_traffic_anomalies_5min` but is not surfaced directly in the dashboard UI —
 only the plain-language status label and deviation percentage are shown to users.
+
+### Traffic Health Score mapping
+
+Internally, we map baseline deviation severity to a 0–100 score via exponential
+decay so that larger deviations reduce health quickly:
+
+```
+score = round( 100 × exp(−0.35 × |z|) )  clamped to [0, 100]
+```
+
+| z-score (|z|) | Approximate score | Label |
+|---|---|---|
+| 0 | 100 | Excellent |
+| 1 | 70 | Good |
+| 2 | 50 | Watch |
+| 3 | 35 | Investigate |
+| 4+ | < 25 | Investigate |
+
+Implemented in `mart_latest_insights_by_bbox.sql`; tested via
+`dbt_utils.expression_is_true` to assert the 0–100 range at every build.

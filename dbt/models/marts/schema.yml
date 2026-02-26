@@ -208,8 +208,13 @@ models:
     description: >
       One insight row per bounding-box combining the latest observed counts,
       the 28-day statistical baseline, the z-score for the most recent bucket,
-      and a 1-hour momentum indicator (trend_1h_pct).
+      a 1-hour momentum indicator (trend_1h_pct), and a Traffic Health Score.
       Primary consumer: Streamlit Insights table.
+    tests:
+      - dbt_utils.expression_is_true:
+          expression: >
+            traffic_health_score is null
+            OR (traffic_health_score >= 0 AND traffic_health_score <= 100)
     columns:
       - name: bbox_name
         description: Bounding-box region name.
@@ -245,3 +250,21 @@ models:
         description: >
           Percent change between the latest aircraft count and the average of
           the preceding 12 buckets (1 hour).  NULL when insufficient data.
+
+      - name: traffic_health_score
+        description: >
+          Integer score 0–100 summarising how close current traffic is to its
+          normal range.  100 = perfectly normal; 0 = extreme deviation.
+          Derived from the baseline deviation via exponential decay so that
+          larger deviations reduce the score quickly.
+          NULL when z_aircraft is unavailable (insufficient baseline history).
+
+      - name: traffic_health_label
+        description: >
+          Plain-language label for traffic_health_score:
+          'Excellent' (≥ 90), 'Good' (70–89), 'Watch' (40–69), 'Investigate' (< 40).
+          NULL when traffic_health_score is NULL.
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['Excellent', 'Good', 'Watch', 'Investigate']

@@ -562,7 +562,7 @@ else:
         else:
             st.success(
                 f"Traffic in **{selected_label}** is within the normal operating range.",
-                icon="✓",
+                icon="✅",
             )
 
         # Add historical normal level as a reference line.

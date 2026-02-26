@@ -131,21 +131,51 @@ if timeseries_df.empty:
     st.info("No timeseries data yet.", icon="ℹ️")
 else:
     available_bboxes = sorted(timeseries_df["bbox_name"].unique().tolist())
-    selected_bbox = st.selectbox("Select bounding box", available_bboxes)
+
+    col_sel, col_win = st.columns([2, 2])
+    selected_bbox = col_sel.selectbox("Bounding box", available_bboxes)
+    window_hours = col_win.select_slider(
+        "Show last …",
+        options=[1, 3, 6, 12, 24, 72, 168],
+        value=24,
+        format_func=lambda h: f"{h}h" if h < 24 else f"{h // 24}d",
+    )
+
+    bbox_df = timeseries_df[timeseries_df["bbox_name"] == selected_bbox].copy()
+    # bucket_ts comes back as object/string from DuckDB; coerce to datetime
+    bbox_df["bucket_ts"] = bbox_df["bucket_ts"].astype("datetime64[us, UTC]")
+
+    cutoff = bbox_df["bucket_ts"].max() - __import__("pandas").Timedelta(hours=window_hours)
+    filtered_df = bbox_df[bbox_df["bucket_ts"] >= cutoff]
+
+    n_points = len(filtered_df)
+    total_points = len(bbox_df)
+
+    if n_points == 0:
+        st.info(f"No data in the last {window_hours}h. Widen the window or run `make ingest`.")
+    elif n_points < 3:
+        st.warning(
+            f"Only **{n_points}** data point(s) visible — the chart will look sparse.  "
+            f"Run `make ingest` a few more times to build up the timeseries "
+            f"({total_points} total buckets across all time).",
+            icon="💡",
+        )
 
     chart_df = (
-        timeseries_df[timeseries_df["bbox_name"] == selected_bbox]
-        .set_index("bucket_ts")[["aircraft_count", "positioned_aircraft_count"]]
+        filtered_df.set_index("bucket_ts")[["aircraft_count", "positioned_aircraft_count"]]
         .rename(
             columns={
                 "aircraft_count": "Total aircraft",
                 "positioned_aircraft_count": "With position fix",
             }
         )
+        .sort_index()
     )
 
     st.line_chart(chart_df)
     st.caption(
-        f"Each point represents distinct aircraft observed within a 5-minute window "
-        f"over **{selected_bbox}**."
+        f"**{n_points}** 5-minute buckets shown · "
+        f"{total_points} total · "
+        f"each point = distinct aircraft over **{selected_bbox}** · "
+        f"run `make ingest` to add more"
     )

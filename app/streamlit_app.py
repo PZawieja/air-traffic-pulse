@@ -328,8 +328,8 @@ st.subheader("📈 Aircraft count over time")
 st.markdown(
     "Each data point represents a **5-minute bucket** — the number of distinct aircraft "
     "detected in the selected region during that interval.\n\n"
-    "- 🔵 **All aircraft** — every transponder signal received\n"
-    "- 🔴 **GPS-positioned** — the subset with a valid latitude/longitude fix\n"
+    "- **All aircraft** — every transponder signal received\n"
+    "- **GPS-positioned** — the subset with a valid latitude/longitude fix\n"
     "- The gap between the two lines is aircraft whose transponder is active "
     "but whose position has not yet been resolved\n\n"
     "Peaks during the day and a dip overnight are typical for European airspace."

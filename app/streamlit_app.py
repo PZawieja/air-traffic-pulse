@@ -118,7 +118,7 @@ else:
     }
     st.dataframe(
         snapshot_df[list(display_cols.keys())].rename(columns=display_cols),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 

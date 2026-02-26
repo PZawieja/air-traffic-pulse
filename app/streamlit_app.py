@@ -40,6 +40,7 @@ demo_mode = settings.air_traffic_pulse_demo_mode
 
 # ── Fetch logic (runs before any rendering) ───────────────────────────────────
 
+
 def _run_fetch(regions: list[str]) -> tuple[bool, str]:
     """Trigger ingestion + dbt build, returning (success, error_message)."""
     env = os.environ.copy()
@@ -49,17 +50,17 @@ def _run_fetch(regions: list[str]) -> tuple[bool, str]:
         ingest_cmd = [
             sys.executable,
             str(_REPO_ROOT / "tools" / "seed_demo_data.py"),
-            "--hours", "1",
-            "--bboxes", *regions,
+            "--hours",
+            "1",
+            "--bboxes",
+            *regions,
         ]
     else:
         # Live mode: call the real OpenSky API for the selected regions.
         env["OPENSKY_BBOX_PRESETS"] = ",".join(regions)
         ingest_cmd = [sys.executable, "-m", "air_traffic_pulse", "ingest"]
 
-    r = subprocess.run(
-        ingest_cmd, env=env, capture_output=True, text=True, cwd=str(_REPO_ROOT)
-    )
+    r = subprocess.run(ingest_cmd, env=env, capture_output=True, text=True, cwd=str(_REPO_ROOT))
     if r.returncode != 0:
         return False, r.stderr or r.stdout or "Ingestion failed with no output."
 
@@ -67,7 +68,10 @@ def _run_fetch(regions: list[str]) -> tuple[bool, str]:
     dbt_bin = str(pathlib.Path(sys.executable).parent / "dbt")
     r = subprocess.run(
         [dbt_bin, "build", "--project-dir", "dbt", "--profiles-dir", "dbt"],
-        env=env, capture_output=True, text=True, cwd=str(_REPO_ROOT),
+        env=env,
+        capture_output=True,
+        text=True,
+        cwd=str(_REPO_ROOT),
     )
     if r.returncode != 0:
         return False, r.stderr or r.stdout or "dbt build failed with no output."
@@ -137,16 +141,18 @@ with st.sidebar:
     )
 
     st.markdown("---")
-    st.caption(
-        "Use `make watch` in a terminal to poll automatically every 5 minutes."
-    )
+    st.caption("Use `make watch` in a terminal to poll automatically every 5 minutes.")
     st.caption(f"Database: `{db_path}`")
 
 
 # ── Run fetch if button was clicked ──────────────────────────────────────────
 # This runs before any data is loaded so the page renders fresh data after rerun.
 if fetch_clicked:
-    label = "Adding synthetic data" if demo_mode else f"Fetching {', '.join(REGION_FLAGS[r] for r in fetch_regions)}"
+    label = (
+        "Adding synthetic data"
+        if demo_mode
+        else f"Fetching {', '.join(REGION_FLAGS[r] for r in fetch_regions)}"
+    )
     with st.spinner(f"{label} and rebuilding models — this takes a few seconds…"):
         ok, err = _run_fetch(fetch_regions)
 
@@ -304,18 +310,16 @@ if snapshot_df.empty:
     )
 else:
     display_df = snapshot_df.copy()
-    display_df["bbox_name"] = display_df["bbox_name"].map(
-        lambda x: REGION_FLAGS.get(x, x.title())
-    )
+    display_df["bbox_name"] = display_df["bbox_name"].map(lambda x: REGION_FLAGS.get(x, x.title()))
     display_df["avg_velocity_mps"] = display_df["avg_velocity_mps"].round(1)
 
     display_cols = {
-        "bbox_name":                 "Region",
-        "snapshot_ingestion_ts":     "Captured at (UTC)",
-        "aircraft_count":            "Aircraft detected",
+        "bbox_name": "Region",
+        "snapshot_ingestion_ts": "Captured at (UTC)",
+        "aircraft_count": "Aircraft detected",
         "positioned_aircraft_count": "GPS-positioned",
-        "on_ground_count":           "On ground",
-        "avg_velocity_mps":          "Avg ground speed (m/s)",
+        "on_ground_count": "On ground",
+        "avg_velocity_mps": "Avg ground speed (m/s)",
     }
     st.dataframe(
         display_df[list(display_cols.keys())].rename(columns=display_cols),
@@ -341,6 +345,7 @@ st.markdown(
 if insights_df.empty:
     st.info("No insights data yet. Click **Fetch & refresh** in the sidebar.", icon="ℹ️")
 else:
+
     def _status_label(row: pd.Series) -> str:
         if row.get("latest_is_anomaly"):
             direction = row.get("latest_anomaly_direction")
@@ -362,15 +367,23 @@ else:
         return f"+{val:.1f}%" if float(val) >= 0 else f"{float(val):.1f}%"  # type: ignore[arg-type]
 
     ins = insights_df.copy()
-    ins["Region"]       = ins["bbox_name"].map(lambda x: REGION_FLAGS.get(x, x.title()))
-    ins["Status"]       = ins.apply(_status_label, axis=1)
+    ins["Region"] = ins["bbox_name"].map(lambda x: REGION_FLAGS.get(x, x.title()))
+    ins["Status"] = ins.apply(_status_label, axis=1)
     ins["Aircraft now"] = ins["latest_aircraft_count"]
     ins["Baseline avg"] = ins["baseline_mean_aircraft"].round(1)
-    ins["Baseline σ"]   = ins["baseline_std_aircraft"].round(1)
-    ins["Z-score"]      = ins["latest_z_aircraft"].apply(_fmt_z)
-    ins["1h trend"]     = ins["trend_1h_pct"].apply(_fmt_pct)
+    ins["Baseline σ"] = ins["baseline_std_aircraft"].round(1)
+    ins["Z-score"] = ins["latest_z_aircraft"].apply(_fmt_z)
+    ins["1h trend"] = ins["trend_1h_pct"].apply(_fmt_pct)
 
-    insight_cols = ["Region", "Status", "Aircraft now", "Baseline avg", "Baseline σ", "Z-score", "1h trend"]
+    insight_cols = [
+        "Region",
+        "Status",
+        "Aircraft now",
+        "Baseline avg",
+        "Baseline σ",
+        "Z-score",
+        "1h trend",
+    ]
     st.dataframe(ins[insight_cols], width="stretch", hide_index=True)
     st.caption(
         "Z-score = (current − 28d mean) / 28d std.  "
@@ -383,14 +396,20 @@ else:
         with st.expander(f"🚨 Recent anomaly events ({len(anomalies_df)} detected)", expanded=True):
             anom_display = anomalies_df.head(20).copy()
             anom_display["bucket_ts"] = anom_display["bucket_ts"].astype("datetime64[us, UTC]")
-            anom_display["Region"]    = anom_display["bbox_name"].map(lambda x: REGION_FLAGS.get(x, x.title()))
-            anom_display["Direction"] = anom_display["anomaly_direction"].fillna("—").str.capitalize()
-            anom_display["Z-score"]   = anom_display["z_aircraft"].apply(_fmt_z)
-            anom_display["Aircraft"]  = anom_display["aircraft_count"]
-            anom_display["Baseline"]  = anom_display["baseline_mean_aircraft"].round(1)
+            anom_display["Region"] = anom_display["bbox_name"].map(
+                lambda x: REGION_FLAGS.get(x, x.title())
+            )
+            anom_display["Direction"] = (
+                anom_display["anomaly_direction"].fillna("—").str.capitalize()
+            )
+            anom_display["Z-score"] = anom_display["z_aircraft"].apply(_fmt_z)
+            anom_display["Aircraft"] = anom_display["aircraft_count"]
+            anom_display["Baseline"] = anom_display["baseline_mean_aircraft"].round(1)
             anom_display["Time (UTC)"] = anom_display["bucket_ts"].dt.strftime("%Y-%m-%d %H:%M")
             st.dataframe(
-                anom_display[["Time (UTC)", "Region", "Direction", "Aircraft", "Baseline", "Z-score"]],
+                anom_display[
+                    ["Time (UTC)", "Region", "Direction", "Aircraft", "Baseline", "Z-score"]
+                ],
                 width="stretch",
                 hide_index=True,
             )
@@ -458,10 +477,12 @@ else:
 
         chart_df = (
             filtered_df.set_index("bucket_ts")[["aircraft_count", "positioned_aircraft_count"]]
-            .rename(columns={
-                "aircraft_count":            "All aircraft",
-                "positioned_aircraft_count": "GPS-positioned",
-            })
+            .rename(
+                columns={
+                    "aircraft_count": "All aircraft",
+                    "positioned_aircraft_count": "GPS-positioned",
+                }
+            )
             .sort_index()
         )
 
@@ -473,21 +494,21 @@ else:
         )
 
         # ── Anomaly table for this bbox ────────────────────────────────────
-        bbox_anomalies = anomalies_df[
-            anomalies_df["bbox_name"] == selected_bbox
-        ].copy()
+        bbox_anomalies = anomalies_df[anomalies_df["bbox_name"] == selected_bbox].copy()
 
         if bbox_anomalies.empty:
             st.caption("No anomaly buckets detected for this region in the current dataset.")
         else:
-            with st.expander(f"🚨 Anomaly buckets for {selected_label} ({len(bbox_anomalies)} total)"):
+            with st.expander(
+                f"🚨 Anomaly buckets for {selected_label} ({len(bbox_anomalies)} total)"
+            ):
                 ba = bbox_anomalies.head(10).copy()
                 ba["bucket_ts"] = ba["bucket_ts"].astype("datetime64[us, UTC]")
-                ba["Time (UTC)"]  = ba["bucket_ts"].dt.strftime("%Y-%m-%d %H:%M")
-                ba["Direction"]   = ba["anomaly_direction"].fillna("—").str.capitalize()
-                ba["Aircraft"]    = ba["aircraft_count"]
-                ba["Baseline"]    = ba["baseline_mean_aircraft"].round(1)
-                ba["Z-score"]     = ba["z_aircraft"].apply(_fmt_z)
+                ba["Time (UTC)"] = ba["bucket_ts"].dt.strftime("%Y-%m-%d %H:%M")
+                ba["Direction"] = ba["anomaly_direction"].fillna("—").str.capitalize()
+                ba["Aircraft"] = ba["aircraft_count"]
+                ba["Baseline"] = ba["baseline_mean_aircraft"].round(1)
+                ba["Z-score"] = ba["z_aircraft"].apply(_fmt_z)
                 st.dataframe(
                     ba[["Time (UTC)", "Direction", "Aircraft", "Baseline", "Z-score"]],
                     width="stretch",

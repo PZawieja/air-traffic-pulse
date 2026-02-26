@@ -664,31 +664,6 @@ else:
         else:
             st.caption(f"No unusual activity detected for {selected_label} in the current dataset.")
 
-# ── 60-second demo script ─────────────────────────────────────────────────────
-st.divider()
-with st.expander("🎤 60-second executive demo script", expanded=False):
-    st.markdown(
-        "Use this script when walking a stakeholder through the dashboard for the first time.\n\n"
-        "---\n\n"
-        '**1.** "This app monitors air traffic intensity across four European regions '
-        "and automatically compares it to what's historically normal — no manual "
-        'threshold-setting required."\n\n'
-        '**2.** "At the top you see pipeline health: when data was last collected, '
-        'how many records were loaded, and whether the run succeeded."\n\n'
-        "**3.** \"This table shows each region's current traffic vs its normal level. "
-        "The Health Score (0–100) gives a single at-a-glance indicator — 100 is "
-        'perfectly normal, lower values flag something worth investigating."\n\n'
-        '**4.** "The timeseries shows how traffic evolves over time. Unusual spikes '
-        "or drops are automatically logged in the activity log below the chart — "
-        'you can drill in to see exactly when and how severe each event was."\n\n'
-        '**5.** "The full statistical methodology is available on demand in the '
-        "expandable Technical note sections — but the default view is designed to "
-        'stay business-first at all times."\n\n'
-        "---\n\n"
-        "*Tip: click **Fetch & refresh** in the sidebar to add a new data point live "
-        "during the demo.*"
-    )
-
 # ── Footer ────────────────────────────────────────────────────────────────────
 st.divider()
 _version = "0.1.0"

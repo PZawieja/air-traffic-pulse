@@ -128,29 +128,6 @@ actionable signal (not just counts).
 
 ---
 
-## 60-second demo script
-
-Use this when walking a stakeholder through the dashboard for the first time:
-
-1. **"This app monitors air traffic intensity across four European regions and
-   automatically compares it to what's historically normal — no manual
-   threshold-setting required."**
-2. **"At the top you see pipeline health: when data was last collected, how many
-   records were loaded, and whether the run succeeded."**
-3. **"This table shows each region's current traffic vs its normal level.
-   The Health Score (0–100) gives a single at-a-glance indicator — 100 is
-   perfectly normal, lower values flag something worth investigating."**
-4. **"The timeseries shows how traffic evolves over time. Unusual spikes or drops
-   are automatically logged — you can drill in to see exactly when and how
-   severe each event was."**
-5. **"The full statistical methodology is available on demand in expandable
-   Technical note sections — but the default view stays business-first."**
-
-> **Tip:** click **Fetch & refresh** in the sidebar to add a live data point
-> during the demo.
-
----
-
 ## Run modes
 
 ### Demo mode (offline — no network, no credentials)

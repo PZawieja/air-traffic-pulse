@@ -1,0 +1,39 @@
+# Virtual environment
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Test & lint caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Data files (generated at runtime)
+data/
+
+# dbt artifacts
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+
+# Logs
+logs/
+*.log
+
+# Environment variables
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp

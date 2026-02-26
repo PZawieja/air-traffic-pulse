@@ -1,0 +1,8 @@
+air_traffic_pulse_dbt:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      # Path is relative to the dbt/ directory; adjust if you run dbt from elsewhere.
+      path: ../data/air_traffic_pulse.duckdb
+      threads: 4

@@ -1,0 +1,32 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Raw aircraft state data loaded directly from the OpenSky Network API.
+    tables:
+      - name: raw_states
+        description: >
+          One row per aircraft state vector per ingestion run.
+          Contains position, velocity, and identification fields as returned
+          by the OpenSky /states/all endpoint.
+        columns:
+          - name: ingested_at
+            description: UTC timestamp when this batch was loaded.
+          - name: bbox_name
+            description: Named bounding-box preset (e.g. berlin, london).
+          - name: icao24
+            description: Unique ICAO 24-bit transponder address (hex string).
+          - name: callsign
+            description: Aircraft callsign (may be blank).
+          - name: origin_country
+            description: Country inferred from the ICAO24 prefix.
+          - name: longitude
+            description: WGS-84 longitude in decimal degrees.
+          - name: latitude
+            description: WGS-84 latitude in decimal degrees.
+          - name: baro_altitude
+            description: Barometric altitude in metres above sea level.
+          - name: on_ground
+            description: True if the aircraft reports it is on the ground.
+          - name: velocity
+            description: Ground speed in m/s.

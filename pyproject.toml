@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "air-traffic-pulse"
+version = "0.1.0"
+description = "OpenSky → DuckDB → dbt → Streamlit analytics pipeline for live air-traffic data."
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.31",
+    "tenacity>=8.2",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "python-dotenv>=1.0",
+    "duckdb>=0.10",
+    "pandas>=2.2",
+    "dbt-duckdb>=1.7",
+    "streamlit>=1.32",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.4",
+    "pytest>=8.1",
+]
+
+[project.scripts]
+air-traffic-pulse = "air_traffic_pulse.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/air_traffic_pulse"]
+
+[tool.ruff]
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "C4",  # flake8-comprehensions
+]
+ignore = [
+    "E501",  # line too long — ruff format handles this
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

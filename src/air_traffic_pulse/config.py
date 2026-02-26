@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     # Comma-separated preset names to ingest on each run.
     opensky_bbox_presets: str = "berlin,frankfurt,london"
 
+    # Demo mode: skip all network calls and load bundled fixture JSON instead.
+    # Set AIR_TRAFFIC_PULSE_DEMO_MODE=1 to enable.
+    air_traffic_pulse_demo_mode: bool = False
+
     # ------------------------------------------------------------------
     # Derived helpers
     # ------------------------------------------------------------------

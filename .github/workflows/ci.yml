@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Cache the virtualenv to speed up subsequent runs.
+      - name: Cache .venv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
+
+      - name: Install dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -e ".[dev]"
+
+      # ── Code quality ────────────────────────────────────────────────────
+      - name: Lint (ruff format)
+        run: .venv/bin/ruff format --check .
+
+      - name: Lint (ruff check)
+        run: .venv/bin/ruff check .
+
+      # ── Unit + integration tests ────────────────────────────────────────
+      - name: Test (pytest)
+        run: .venv/bin/python -m pytest
+
+      # ── End-to-end pipeline (offline, no secrets required) ─────────────
+      - name: Demo ingest (fixture data, no network)
+        run: |
+          AIR_TRAFFIC_PULSE_DEMO_MODE=1 DUCKDB_PATH=./data/ci.duckdb \
+            .venv/bin/python -m air_traffic_pulse ingest
+
+      - name: dbt build
+        run: |
+          DUCKDB_PATH=./data/ci.duckdb \
+            .venv/bin/python -m air_traffic_pulse dbt

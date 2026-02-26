@@ -3,9 +3,10 @@ air_traffic_pulse_dbt:
   outputs:
     dev:
       type: duckdb
-      # Path is relative to the directory where you invoke dbt (repo root when
-      # using --project-dir dbt --profiles-dir dbt from the Makefile).
-      path: data/air_traffic_pulse.duckdb
-      # All dbt models land in the "dbt" DuckDB schema (not "raw").
+      # Path is resolved relative to the CWD where dbt is invoked (repo root
+      # when using --project-dir dbt --profiles-dir dbt from the Makefile).
+      # Override by setting DUCKDB_PATH=... in the environment.
+      path: "{{ env_var('DUCKDB_PATH', 'data/air_traffic_pulse.duckdb') }}"
+      # All dbt models land in the "dbt" DuckDB schema (separate from "raw").
       schema: dbt
       threads: 4

@@ -1,13 +1,16 @@
 """Orchestration: fetch aircraft states for configured bboxes and persist into DuckDB.
 
 Run via:
-    python -m air_traffic_pulse ingest
-    make ingest
+    python -m air_traffic_pulse ingest          # live mode (requires network)
+    AIR_TRAFFIC_PULSE_DEMO_MODE=1 make ingest   # demo mode (offline, uses fixture data)
+    make ingest                                  # make target
 """
 
 from __future__ import annotations
 
 import datetime as dt
+import json
+import pathlib
 import time
 import uuid
 
@@ -61,22 +64,64 @@ _UPDATE_RUN = """
     WHERE run_id = ?
 """
 
+# ---------------------------------------------------------------------------
+# Demo-mode fixture mapping
+# ---------------------------------------------------------------------------
+_FIXTURES_DIR = pathlib.Path(__file__).parent.parent / "tests" / "fixtures"
+
+_DEMO_FIXTURE_MAP: dict[str, pathlib.Path] = {
+    "berlin": _FIXTURES_DIR / "opensky_states_sample.json",
+    "frankfurt": _FIXTURES_DIR / "opensky_states_sample.json",
+    "london": _FIXTURES_DIR / "opensky_states_sample_london.json",
+}
+
+
+def _load_demo_payload(bbox_name: str) -> dict:
+    """Return a fixture payload for *bbox_name*, stamped with the current time."""
+    fixture_path = _DEMO_FIXTURE_MAP.get(
+        bbox_name,
+        next(iter(_DEMO_FIXTURE_MAP.values())),  # fall back to first fixture
+    )
+    payload: dict = json.loads(fixture_path.read_text(encoding="utf-8"))
+    # Stamp with current unix time so the data looks fresh in the dashboard.
+    payload["time"] = int(dt.datetime.now(tz=dt.UTC).timestamp())
+    return payload
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
+
 
 def _rows_to_tuples(rows: list[StateRow]) -> list[tuple]:
     """Convert StateRow dicts to positional tuples aligned with _STATE_COLUMNS."""
     return [tuple(row[col] for col in _STATE_COLUMNS) for row in rows]  # type: ignore[literal-required]
 
 
+# ---------------------------------------------------------------------------
+# Entry-point
+# ---------------------------------------------------------------------------
+
+
 def main() -> None:
     """Entry-point called by the CLI.
+
+    In *live mode* (default) each bbox is polled from the OpenSky Network.
+    In *demo mode* (``AIR_TRAFFIC_PULSE_DEMO_MODE=1``) bundled fixture JSON
+    files are loaded instead — no network required.
 
     Raises on unrecoverable error (after marking the run as failed in DuckDB).
     """
     settings = get_settings()
-    client = OpenSkyClient(
-        username=settings.opensky_username,
-        password=settings.opensky_password,
-    )
+    demo_mode = settings.air_traffic_pulse_demo_mode
+
+    if demo_mode:
+        log.info("Demo mode enabled — using fixture data (no network calls).")
+    else:
+        client = OpenSkyClient(
+            username=settings.opensky_username,
+            password=settings.opensky_password,
+        )
 
     con = get_connection(settings.duckdb_path)
     init_schema(con)
@@ -84,18 +129,23 @@ def main() -> None:
     run_id = str(uuid.uuid4())
     started_at = dt.datetime.now(tz=dt.UTC)
     con.execute(_INSERT_RUN, [run_id, started_at])
-    log.info("Ingestion run started  run_id=%s", run_id)
+    log.info("Ingestion run started  run_id=%s  demo=%s", run_id, demo_mode)
 
     total_rows = 0
     try:
         bboxes = list(settings.active_bboxes.items())
         for i, (bbox_name, bbox) in enumerate(bboxes):
-            if i > 0:
+            if i > 0 and not demo_mode:
                 # Be polite to the OpenSky API between bbox calls.
                 time.sleep(1.0)
 
-            log.info("[%d/%d] Fetching bbox '%s' …", i + 1, len(bboxes), bbox_name)
-            payload = client.get_states_all_bbox(**bbox)
+            log.info("[%d/%d] Processing bbox '%s' …", i + 1, len(bboxes), bbox_name)
+
+            if demo_mode:
+                payload = _load_demo_payload(bbox_name)
+            else:
+                payload = client.get_states_all_bbox(**bbox)  # type: ignore[possibly-undefined]
+
             rows = OpenSkyClient.parse_states(payload, bbox_name, started_at)
 
             if rows:

@@ -17,21 +17,26 @@ endif
 # Use uv if it exists; otherwise fall back to the system python3 / pip.
 UV := $(shell command -v uv 2>/dev/null)
 
-.PHONY: help venv install setup fmt lint test ingest dbt app clean
+# Dedicated database path used by `make demo` so it never overwrites real data.
+DEMO_DB := ./data/air_traffic_pulse_demo.duckdb
+
+.PHONY: help venv install setup fmt lint test ingest dbt app demo demo-app clean
 
 # Default target — show available targets.
 help:
 	@echo ""
 	@echo "  Air Traffic Pulse"
 	@echo ""
-	@echo "  make setup    Create .venv and install all dependencies"
-	@echo "  make fmt      Format and auto-fix lint (ruff)"
-	@echo "  make lint     Lint check without auto-fix"
-	@echo "  make test     Run pytest"
-	@echo "  make ingest   Fetch live aircraft states → DuckDB"
-	@echo "  make dbt      Run dbt deps + dbt build"
-	@echo "  make app      Launch Streamlit dashboard"
-	@echo "  make clean    Remove .venv and build artefacts"
+	@echo "  make setup      Create .venv and install all dependencies"
+	@echo "  make fmt        Format and auto-fix lint (ruff)"
+	@echo "  make lint       Lint check without auto-fix"
+	@echo "  make test       Run pytest"
+	@echo "  make ingest     Fetch live aircraft states → DuckDB"
+	@echo "  make dbt        Run dbt deps + dbt build"
+	@echo "  make app        Launch Streamlit dashboard"
+	@echo "  make demo       Offline demo: fixture ingest → dbt build"
+	@echo "  make demo-app   Launch dashboard against the demo database"
+	@echo "  make clean      Remove .venv and build artefacts"
 	@echo ""
 
 # ---------------------------------------------------------------------------
@@ -65,7 +70,7 @@ endif
 
 setup: venv install
 	@echo ""
-	@echo "✓ Setup complete.  Copy .env.example → .env and fill in your credentials."
+	@echo "✓ Setup complete.  Copy .env.example → .env and fill in credentials."
 	@echo ""
 
 # ---------------------------------------------------------------------------
@@ -73,12 +78,12 @@ setup: venv install
 # ---------------------------------------------------------------------------
 
 fmt:
-	$(PYTHON) -m ruff format src ingestion warehouse app tests
-	$(PYTHON) -m ruff check --fix src ingestion warehouse app tests
+	$(PYTHON) -m ruff format src ingestion warehouse app tests tools
+	$(PYTHON) -m ruff check --fix src ingestion warehouse app tests tools
 
 lint:
-	$(PYTHON) -m ruff format --check src ingestion warehouse app tests
-	$(PYTHON) -m ruff check src ingestion warehouse app tests
+	$(PYTHON) -m ruff format --check src ingestion warehouse app tests tools
+	$(PYTHON) -m ruff check src ingestion warehouse app tests tools
 
 # ---------------------------------------------------------------------------
 # Testing
@@ -99,6 +104,23 @@ dbt:
 
 app:
 	$(PYTHON) -m air_traffic_pulse app
+
+# ---------------------------------------------------------------------------
+# Demo mode (offline — no network required)
+# ---------------------------------------------------------------------------
+
+demo:
+	@echo "→ Demo ingest (offline fixture data) …"
+	AIR_TRAFFIC_PULSE_DEMO_MODE=1 DUCKDB_PATH=$(DEMO_DB) \
+		$(PYTHON) -m air_traffic_pulse ingest
+	@echo "→ Building dbt models …"
+	DUCKDB_PATH=$(DEMO_DB) $(PYTHON) -m air_traffic_pulse dbt
+	@echo ""
+	@echo "✓ Demo ready.  Launch the dashboard with:  make demo-app"
+	@echo ""
+
+demo-app:
+	DUCKDB_PATH=$(DEMO_DB) $(PYTHON) -m air_traffic_pulse app
 
 # ---------------------------------------------------------------------------
 # Housekeeping

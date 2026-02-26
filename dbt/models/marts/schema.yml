@@ -1,6 +1,21 @@
 version: 2
 
 models:
+  # ── metricflow_time_spine ─────────────────────────────────────────────────
+  - name: metricflow_time_spine
+    description: >
+      Continuous daily date spine required by the MetricFlow semantic layer.
+      Not used directly by the Streamlit dashboard.
+    time_spine:
+      standard_granularity_column: date_day
+    columns:
+      - name: date_day
+        description: One row per calendar day from 2020-01-01 onwards.
+        granularity: day
+        tests:
+          - not_null
+          - unique
+
   # ── mart_latest_snapshot_by_bbox ─────────────────────────────────────────
   - name: mart_latest_snapshot_by_bbox
     description: >

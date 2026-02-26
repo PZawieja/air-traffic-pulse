@@ -1,0 +1,31 @@
+metrics:
+
+  # ── aircraft_count ───────────────────────────────────────────────────────────
+  - name: aircraft_count
+    label: "Aircraft Count"
+    description: >
+      Total number of aircraft-state rows observed across all 5-minute buckets
+      for the selected dimensions and time window.
+    type: simple
+    type_params:
+      measure: aircraft_count
+
+  # ── positioned_aircraft_count ────────────────────────────────────────────────
+  - name: positioned_aircraft_count
+    label: "GPS-Positioned Aircraft Count"
+    description: >
+      Aircraft with a valid latitude/longitude position fix (has_position = true)
+      within the selected 5-minute bucket window.
+    type: simple
+    type_params:
+      measure: positioned_aircraft_count
+
+  # ── on_ground_count ──────────────────────────────────────────────────────────
+  - name: on_ground_count
+    label: "On-Ground Aircraft Count"
+    description: >
+      Aircraft whose transponder reports ground contact (taxiing or parked)
+      in the most recent snapshot per bounding-box region.
+    type: simple
+    type_params:
+      measure: on_ground_count

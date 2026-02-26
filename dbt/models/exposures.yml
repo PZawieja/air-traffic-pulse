@@ -1,0 +1,21 @@
+version: 2
+
+exposures:
+  - name: streamlit_air_traffic_pulse
+    type: dashboard
+    maturity: medium
+    description: >
+      Streamlit application that visualises air-traffic intensity and
+      ingestion health metrics for Berlin, Frankfurt, London, and Warsaw.
+      Reads directly from the three mart tables at query time; no caching
+      layer between dbt and the UI.
+    depends_on:
+      - ref('mart_latest_snapshot_by_bbox')
+      - ref('mart_traffic_timeseries_5min')
+      - ref('mart_latest_ingestion_run')
+    owner:
+      name: Data Platform
+      email: example@example.com
+    tags:
+      - dashboard
+      - streamlit

@@ -53,6 +53,12 @@ models:
 
       - name: on_ground
         description: True when the aircraft's transponder reports ground contact.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
+                quote: false
 
       - name: velocity
         description: Ground speed in metres per second.

@@ -8,6 +8,7 @@ Reads from dbt mart tables in DuckDB.  Run the pipeline first:
 
 from __future__ import annotations
 
+import contextlib
 import os
 import pathlib
 import subprocess
@@ -215,16 +216,19 @@ con.close()
 st.title("✈️ Air Traffic Pulse")
 
 if not run_df.empty:
-    last_ts = run_df.iloc[0]["started_at"]
-    last_ts_str = str(last_ts)[:19] if last_ts is not None else "unknown"
+    row0 = run_df.iloc[0]
+    finished = row0.get("finished_at")
+    finished_str = str(finished)[:19] if finished is not None else None
+    started_str = str(row0["started_at"])[:19] if row0["started_at"] is not None else "unknown"
+    data_note = f"Last data collected: **{finished_str or started_str} UTC**"
     st.caption(
-        f"Tracking live air traffic over **Berlin · Frankfurt · London** · "
-        f"Last data collected: **{last_ts_str} UTC**"
+        "Tracking live air traffic over **Berlin · Frankfurt · London · Warsaw** · "
+        + data_note
         + ("  ·  🧪 Demo mode" if demo_mode else "")
     )
 else:
     st.caption(
-        "Tracking live air traffic over **Berlin · Frankfurt · London**"
+        "Tracking live air traffic over **Berlin · Frankfurt · London · Warsaw**"
         + ("  ·  🧪 Demo mode" if demo_mode else "")
     )
 
@@ -391,3 +395,16 @@ else:
             f"region: **{selected_label}** · "
             "click Fetch & refresh to add more data points"
         )
+
+# ── Footer ────────────────────────────────────────────────────────────────────
+st.divider()
+_version = "0.1.0"
+with contextlib.suppress(OSError):
+    _version = (pathlib.Path(__file__).parent.parent / "VERSION").read_text().strip()
+
+st.caption(
+    f"**Air Traffic Pulse** · Analytics Engineering Portfolio Project · "
+    f"v{_version} · "
+    f"[GitHub](https://github.com/PZawieja/air-traffic-pulse) · "
+    f"Data: [OpenSky Network](https://opensky-network.org/)"
+)

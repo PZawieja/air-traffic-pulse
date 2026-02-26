@@ -1,0 +1,71 @@
+semantic_models:
+
+  # ── traffic_timeseries ──────────────────────────────────────────────────────
+  # Built on the 5-minute bucket timeseries mart.
+  # The time dimension allows MetricFlow to trend metrics over time.
+  - name: traffic_timeseries
+    description: >
+      5-minute aircraft count timeseries per bounding-box region.
+      Use this semantic model to answer questions such as
+      "how many aircraft were over London last 24 hours?".
+    model: ref('mart_traffic_timeseries_5min')
+    defaults:
+      agg_time_dimension: bucket_ts
+
+    entities:
+      - name: traffic_bucket
+        type: primary
+        # Surrogate key: combine bbox + timestamp so every row is unique.
+        expr: "bbox_name || '/' || bucket_ts::varchar"
+
+    dimensions:
+      - name: bbox_name
+        type: categorical
+        description: Bounding-box region name (e.g. berlin, london).
+      - name: bucket_ts
+        type: time
+        type_params:
+          time_granularity: minute
+
+    measures:
+      - name: aircraft_count
+        description: Distinct aircraft observed within this 5-minute window.
+        agg: sum
+        expr: aircraft_count
+      - name: positioned_aircraft_count
+        description: Aircraft with a valid GPS/ADS-B position fix.
+        agg: sum
+        expr: positioned_aircraft_count
+
+  # ── snapshot_by_bbox ─────────────────────────────────────────────────────────
+  # Built on the latest-snapshot mart.
+  # snapshot_ingestion_ts is the time dimension (day granularity is enough
+  # since this mart carries only the latest snapshot, not a full history).
+  - name: snapshot_by_bbox
+    description: >
+      Latest aircraft snapshot counts per bounding-box region.
+      Use this semantic model for on_ground metrics that are only available
+      in the snapshot mart.
+    model: ref('mart_latest_snapshot_by_bbox')
+    defaults:
+      agg_time_dimension: snapshot_ingestion_ts
+
+    entities:
+      - name: bbox_region
+        type: primary
+        expr: bbox_name
+
+    dimensions:
+      - name: bbox_name
+        type: categorical
+        description: Bounding-box region name.
+      - name: snapshot_ingestion_ts
+        type: time
+        type_params:
+          time_granularity: day
+
+    measures:
+      - name: on_ground_count
+        description: Aircraft reporting ground contact in the latest snapshot.
+        agg: sum
+        expr: on_ground_count

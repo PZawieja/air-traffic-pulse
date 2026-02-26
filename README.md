@@ -217,6 +217,19 @@ Add custom presets in `src/air_traffic_pulse/config.py → BBOX_PRESETS`.
 
 ---
 
+## Release checklist
+
+Use this checklist before tagging a new version:
+
+- [ ] All tests pass: `make test`
+- [ ] Demo pipeline runs cleanly: `make demo && make demo-app`
+- [ ] Lint is clean: `make lint`
+- [ ] Bump the version number in `VERSION`
+- [ ] Add a `## [x.y.z] — YYYY-MM-DD` section to `CHANGELOG.md`
+- [ ] Commit and tag: `git tag vx.y.z && git push --tags`
+
+---
+
 ## Troubleshooting
 
 **HTTP 429 / rate-limit errors during ingestion**

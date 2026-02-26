@@ -2,31 +2,94 @@ version: 2
 
 sources:
   - name: raw
-    description: Raw aircraft state data loaded directly from the OpenSky Network API.
+    description: >
+      Raw tables written directly by the Python ingestion pipeline.
+      These are append-only and must not be modified by dbt.
+    schema: raw
+
     tables:
-      - name: raw_states
+      - name: opensky_states
         description: >
           One row per aircraft state vector per ingestion run.
-          Contains position, velocity, and identification fields as returned
-          by the OpenSky /states/all endpoint.
+          Each row represents a single aircraft at the moment the OpenSky
+          /states/all endpoint was polled for a given bounding-box preset.
+        loaded_at_field: ingestion_ts
+        freshness:
+          warn_after: {count: 2, period: hour}
+          error_after: {count: 24, period: hour}
         columns:
-          - name: ingested_at
-            description: UTC timestamp when this batch was loaded.
+          - name: ingestion_ts
+            description: UTC timestamp of the ingestion run that produced this row.
+          - name: data_ts
+            description: >
+              OpenSky server-side Unix epoch (seconds) for the snapshot.
+              All rows in the same bbox+ingestion batch share this value.
           - name: bbox_name
-            description: Named bounding-box preset (e.g. berlin, london).
+            description: >
+              Named bounding-box preset used for this poll
+              (e.g. berlin, frankfurt, london).
           - name: icao24
-            description: Unique ICAO 24-bit transponder address (hex string).
+            description: >
+              ICAO 24-bit Mode S transponder address in lower-case hexadecimal.
+              Uniquely identifies an aircraft registration.
           - name: callsign
-            description: Aircraft callsign (may be blank).
+            description: >
+              Radio callsign as reported by the transponder.
+              May be NULL or all-whitespace for general-aviation aircraft.
           - name: origin_country
-            description: Country inferred from the ICAO24 prefix.
+            description: Country of registration inferred from the ICAO24 prefix.
+          - name: time_position
+            description: Unix epoch of the last position update (NULL if unavailable).
+          - name: last_contact
+            description: Unix epoch of the last ATC or radio contact.
           - name: longitude
-            description: WGS-84 longitude in decimal degrees.
+            description: WGS-84 longitude in decimal degrees. NULL if position unknown.
           - name: latitude
-            description: WGS-84 latitude in decimal degrees.
+            description: WGS-84 latitude in decimal degrees. NULL if position unknown.
           - name: baro_altitude
-            description: Barometric altitude in metres above sea level.
+            description: >
+              Barometric altitude in metres above mean sea level.
+              NULL when on_ground is true.
           - name: on_ground
-            description: True if the aircraft reports it is on the ground.
+            description: True when the aircraft's own transponder reports ground contact.
           - name: velocity
-            description: Ground speed in m/s.
+            description: Ground speed in metres per second.
+          - name: true_track
+            description: True track angle in degrees, measured clockwise from north.
+          - name: vertical_rate
+            description: Vertical rate in m/s. Positive values indicate climbing.
+          - name: sensors
+            description: >
+              JSON array of OpenSky sensor IDs that received this signal.
+              NULL when the network does not expose individual sensor IDs.
+          - name: geo_altitude
+            description: WGS-84 geometric (GPS) altitude in metres.
+          - name: squawk
+            description: Mode C transponder squawk code (4-digit octal string).
+          - name: spi
+            description: >
+              Special Purpose Indicator — true when the pilot has activated
+              the IDENT button, typically during ATC communication.
+          - name: position_source
+            description: >
+              How position was determined:
+              0 = ADS-B, 1 = ASTERIX, 2 = MLAT, 3 = FLARM.
+
+      - name: ingestion_runs
+        description: >
+          Audit trail for every ingestion run executed by the pipeline.
+          One row per run, updated in-place from "running" to "success"
+          or "failed".
+        columns:
+          - name: run_id
+            description: UUID v4 identifier, unique per run.
+          - name: started_at
+            description: UTC timestamp when the run began.
+          - name: finished_at
+            description: UTC timestamp when the run ended (NULL if still running).
+          - name: status
+            description: "Current state of the run: running, success, or failed."
+          - name: records_loaded
+            description: Total rows inserted into raw.opensky_states by this run.
+          - name: error_msg
+            description: Exception message if status = 'failed', otherwise NULL.

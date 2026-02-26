@@ -1,0 +1,103 @@
+version: 2
+
+models:
+  # ── mart_latest_snapshot_by_bbox ─────────────────────────────────────────
+  - name: mart_latest_snapshot_by_bbox
+    description: >
+      One row per bounding-box preset showing aircraft statistics for the
+      most recent ingestion snapshot.  Primary source for the Streamlit
+      Overview table.
+    columns:
+      - name: bbox_name
+        description: Named bounding-box preset (e.g. berlin, frankfurt, london).
+        tests:
+          - unique
+          - not_null
+
+      - name: snapshot_ingestion_ts
+        description: UTC timestamp of the latest ingestion snapshot for this bbox.
+        tests:
+          - not_null
+
+      - name: aircraft_count
+        description: Number of distinct aircraft observed in the latest snapshot.
+        tests:
+          - not_null
+
+      - name: positioned_aircraft_count
+        description: Aircraft with a valid GPS/ADS-B position fix.
+        tests:
+          - not_null
+
+      - name: on_ground_count
+        description: Aircraft reporting ground contact in the latest snapshot.
+        tests:
+          - not_null
+
+      - name: avg_velocity_mps
+        description: >
+          Mean ground speed in m/s across all aircraft in the latest snapshot.
+          NULL if no velocity data is available.
+
+  # ── mart_traffic_timeseries_5min ─────────────────────────────────────────
+  - name: mart_traffic_timeseries_5min
+    description: >
+      Traffic intensity per bounding-box in 5-minute buckets.
+      Each row represents one 5-minute window for one bbox.
+      Primary source for the Streamlit timeseries chart.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - bbox_name
+            - bucket_ts
+    columns:
+      - name: bbox_name
+        description: Named bounding-box preset.
+        tests:
+          - not_null
+
+      - name: bucket_ts
+        description: >
+          Start of the 5-minute window (truncated from ingestion_ts).
+          Each value is aligned to 00, 05, 10 … 55 minutes past the hour.
+        tests:
+          - not_null
+
+      - name: aircraft_count
+        description: Distinct aircraft observed within this 5-minute window.
+        tests:
+          - not_null
+
+      - name: positioned_aircraft_count
+        description: Aircraft with a valid position fix within this window.
+        tests:
+          - not_null
+
+  # ── mart_latest_ingestion_run ─────────────────────────────────────────────
+  - name: mart_latest_ingestion_run
+    description: >
+      Single-row model exposing the most recent ingestion run.
+      Drives the "last run" metric strip in the Streamlit dashboard.
+    columns:
+      - name: run_id
+        description: UUID of the most recent run.
+        tests:
+          - not_null
+
+      - name: started_at
+        description: UTC timestamp when the run began.
+        tests:
+          - not_null
+
+      - name: status
+        description: "Final state of the run: running, success, or failed."
+        tests:
+          - not_null
+
+      - name: records_loaded
+        description: Total rows loaded in this run.
+        tests:
+          - not_null
+
+      - name: run_duration_seconds
+        description: Wall-clock duration in seconds. NULL if the run never finished.

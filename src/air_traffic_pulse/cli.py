@@ -8,6 +8,7 @@ Usage:
 
 from __future__ import annotations
 
+import pathlib
 import subprocess
 import sys
 
@@ -37,14 +38,19 @@ def _run_ingest() -> None:
 
 
 def _run_dbt() -> None:
-    log.info("Running: dbt deps")
-    result = subprocess.run(["dbt", "deps", "--project-dir", "dbt"], check=False)
+    # Resolve the dbt CLI from the same virtualenv as the running Python so
+    # the system dbt-fusion (or any other global dbt) cannot shadow it.
+    _dbt_bin = str(pathlib.Path(sys.executable).parent / "dbt")
+    _DBT_FLAGS = ["--project-dir", "dbt", "--profiles-dir", "dbt"]
+
+    log.info("Running: dbt deps  (%s)", _dbt_bin)
+    result = subprocess.run([_dbt_bin, "deps", *_DBT_FLAGS], check=False)
     if result.returncode != 0:
         log.error("dbt deps failed (exit %d).", result.returncode)
         sys.exit(result.returncode)
 
-    log.info("Running: dbt build")
-    result = subprocess.run(["dbt", "build", "--project-dir", "dbt"], check=False)
+    log.info("Running: dbt build  (%s)", _dbt_bin)
+    result = subprocess.run([_dbt_bin, "build", *_DBT_FLAGS], check=False)
     if result.returncode != 0:
         log.error("dbt build failed (exit %d).", result.returncode)
         sys.exit(result.returncode)

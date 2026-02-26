@@ -1,0 +1,140 @@
+version: 2
+
+models:
+  - name: stg_opensky_states
+    description: >
+      Cleaned and typed aircraft state vectors sourced from raw.opensky_states.
+      One row per aircraft per ingestion snapshot per bounding-box preset.
+      Callsigns are stripped and nullified when blank; icao24 is normalised to
+      lower-case; two derived columns (ingestion_date, has_position) are added.
+    columns:
+      - name: ingestion_ts
+        description: UTC timestamp of the ingestion run that loaded this row.
+        tests:
+          - not_null
+
+      - name: data_ts
+        description: OpenSky server-side Unix epoch for this snapshot batch.
+        tests:
+          - not_null
+
+      - name: bbox_name
+        description: Named bounding-box preset (e.g. berlin, frankfurt, london).
+        tests:
+          - not_null
+
+      - name: icao24
+        description: Lower-case ICAO 24-bit transponder address (hex string).
+        tests:
+          - not_null
+
+      - name: callsign
+        description: >
+          Radio callsign trimmed of whitespace.
+          NULL when the transponder reports no callsign.
+
+      - name: origin_country
+        description: Country of registration inferred from the ICAO24 prefix.
+
+      - name: time_position
+        description: Unix epoch of the last position update. NULL if unavailable.
+
+      - name: last_contact
+        description: Unix epoch of the last ATC or radio contact.
+
+      - name: longitude
+        description: WGS-84 longitude in decimal degrees. NULL if unknown.
+
+      - name: latitude
+        description: WGS-84 latitude in decimal degrees. NULL if unknown.
+
+      - name: baro_altitude
+        description: Barometric altitude in metres. NULL when on_ground is true.
+
+      - name: on_ground
+        description: True when the aircraft's transponder reports ground contact.
+
+      - name: velocity
+        description: Ground speed in metres per second.
+
+      - name: true_track
+        description: True track angle in degrees clockwise from north.
+
+      - name: vertical_rate
+        description: Vertical rate in m/s. Positive = climbing.
+
+      - name: position_source
+        description: "How position was determined: 0=ADS-B, 1=ASTERIX, 2=MLAT, 3=FLARM."
+        tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1, 2, 3]
+                quote: false
+
+      - name: squawk
+        description: Mode C transponder squawk code.
+
+      - name: spi
+        description: True when the pilot has activated the IDENT button.
+
+      - name: sensors
+        description: JSON array of receiving sensor IDs, or NULL.
+
+      - name: geo_altitude
+        description: WGS-84 geometric altitude in metres.
+
+      - name: ingestion_date
+        description: Calendar date (UTC) of the ingestion run. Derived from ingestion_ts.
+        tests:
+          - not_null
+
+      - name: has_position
+        description: True when both longitude and latitude are non-NULL.
+        tests:
+          - not_null
+
+  # ── stg_ingestion_runs ────────────────────────────────────────────────────
+  - name: stg_ingestion_runs
+    description: >
+      Ingestion run audit trail sourced from raw.ingestion_runs.
+      One row per run; adds run_duration_seconds and is_success derived columns.
+    columns:
+      - name: run_id
+        description: UUID v4 identifier — unique per run.
+        tests:
+          - unique
+          - not_null
+
+      - name: started_at
+        description: UTC timestamp when the run began.
+        tests:
+          - not_null
+
+      - name: finished_at
+        description: UTC timestamp when the run ended. NULL if still running.
+
+      - name: status
+        description: "Current run state: running, success, or failed."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['running', 'success', 'failed']
+
+      - name: records_loaded
+        description: Total rows inserted into raw.opensky_states by this run.
+        tests:
+          - not_null
+
+      - name: error_msg
+        description: Exception message when status = 'failed'. NULL otherwise.
+
+      - name: run_duration_seconds
+        description: >
+          Wall-clock duration of the run in seconds.
+          NULL when finished_at is NULL (run still in progress).
+
+      - name: is_success
+        description: Boolean shorthand for status = 'success'.
+        tests:
+          - not_null

@@ -192,6 +192,8 @@ _REQUIRED_MARTS = [
     "mart_latest_ingestion_run",
     "mart_latest_snapshot_by_bbox",
     "mart_traffic_timeseries_5min",
+    "mart_latest_insights_by_bbox",
+    "mart_traffic_anomalies_5min",
 ]
 missing = [t for t in _REQUIRED_MARTS if not _table_exists("dbt", t)]
 if missing:
@@ -209,6 +211,10 @@ run_df = con.execute("SELECT * FROM dbt.mart_latest_ingestion_run").df()
 snapshot_df = con.execute("SELECT * FROM dbt.mart_latest_snapshot_by_bbox ORDER BY bbox_name").df()
 timeseries_df = con.execute(
     "SELECT * FROM dbt.mart_traffic_timeseries_5min ORDER BY bbox_name, bucket_ts"
+).df()
+insights_df = con.execute("SELECT * FROM dbt.mart_latest_insights_by_bbox ORDER BY bbox_name").df()
+anomalies_df = con.execute(
+    "SELECT * FROM dbt.mart_traffic_anomalies_5min WHERE is_anomaly = true ORDER BY bucket_ts DESC"
 ).df()
 con.close()
 
@@ -323,7 +329,75 @@ else:
 
 st.divider()
 
-# ── Section 3: Timeseries ─────────────────────────────────────────────────────
+# ── Section 3: Traffic insights ───────────────────────────────────────────────
+st.subheader("🧠 Traffic insights")
+st.markdown(
+    "Statistical summary for the most recent 5-minute bucket per region. "
+    "The **z-score** measures how many standard deviations the current count "
+    "is from the 28-day rolling baseline — values beyond ±3 are flagged as anomalies. "
+    "**1h trend** is the % change vs the preceding hour's average."
+)
+
+if insights_df.empty:
+    st.info("No insights data yet. Click **Fetch & refresh** in the sidebar.", icon="ℹ️")
+else:
+    def _status_label(row: pd.Series) -> str:
+        if row.get("latest_is_anomaly"):
+            direction = row.get("latest_anomaly_direction")
+            if direction == "spike":
+                return "⚠️ Spike"
+            if direction == "drop":
+                return "⬇️ Drop"
+            return "⚠️ Anomaly"
+        return "✅ Normal"
+
+    def _fmt_z(val: object) -> str:
+        if val is None or (isinstance(val, float) and pd.isna(val)):
+            return "—"
+        return f"+{val:.1f}" if float(val) >= 0 else f"{float(val):.1f}"  # type: ignore[arg-type]
+
+    def _fmt_pct(val: object) -> str:
+        if val is None or (isinstance(val, float) and pd.isna(val)):
+            return "—"
+        return f"+{val:.1f}%" if float(val) >= 0 else f"{float(val):.1f}%"  # type: ignore[arg-type]
+
+    ins = insights_df.copy()
+    ins["Region"]       = ins["bbox_name"].map(lambda x: REGION_FLAGS.get(x, x.title()))
+    ins["Status"]       = ins.apply(_status_label, axis=1)
+    ins["Aircraft now"] = ins["latest_aircraft_count"]
+    ins["Baseline avg"] = ins["baseline_mean_aircraft"].round(1)
+    ins["Baseline σ"]   = ins["baseline_std_aircraft"].round(1)
+    ins["Z-score"]      = ins["latest_z_aircraft"].apply(_fmt_z)
+    ins["1h trend"]     = ins["trend_1h_pct"].apply(_fmt_pct)
+
+    insight_cols = ["Region", "Status", "Aircraft now", "Baseline avg", "Baseline σ", "Z-score", "1h trend"]
+    st.dataframe(ins[insight_cols], width="stretch", hide_index=True)
+    st.caption(
+        "Z-score = (current − 28d mean) / 28d std.  "
+        "Anomaly threshold: |z| ≥ 3.  "
+        "1h trend compares latest bucket to the average of the preceding 12 buckets."
+    )
+
+    # Show recent anomaly events if any exist.
+    if not anomalies_df.empty:
+        with st.expander(f"🚨 Recent anomaly events ({len(anomalies_df)} detected)", expanded=True):
+            anom_display = anomalies_df.head(20).copy()
+            anom_display["bucket_ts"] = anom_display["bucket_ts"].astype("datetime64[us, UTC]")
+            anom_display["Region"]    = anom_display["bbox_name"].map(lambda x: REGION_FLAGS.get(x, x.title()))
+            anom_display["Direction"] = anom_display["anomaly_direction"].fillna("—").str.capitalize()
+            anom_display["Z-score"]   = anom_display["z_aircraft"].apply(_fmt_z)
+            anom_display["Aircraft"]  = anom_display["aircraft_count"]
+            anom_display["Baseline"]  = anom_display["baseline_mean_aircraft"].round(1)
+            anom_display["Time (UTC)"] = anom_display["bucket_ts"].dt.strftime("%Y-%m-%d %H:%M")
+            st.dataframe(
+                anom_display[["Time (UTC)", "Region", "Direction", "Aircraft", "Baseline", "Z-score"]],
+                width="stretch",
+                hide_index=True,
+            )
+
+st.divider()
+
+# ── Section 4: Timeseries ─────────────────────────────────────────────────────
 st.subheader("📈 Aircraft count over time")
 st.markdown(
     "Each data point represents a **5-minute bucket** — the number of distinct aircraft "
@@ -397,6 +471,28 @@ else:
             f"region: **{selected_label}** · "
             "click Fetch & refresh to add more data points"
         )
+
+        # ── Anomaly table for this bbox ────────────────────────────────────
+        bbox_anomalies = anomalies_df[
+            anomalies_df["bbox_name"] == selected_bbox
+        ].copy()
+
+        if bbox_anomalies.empty:
+            st.caption("No anomaly buckets detected for this region in the current dataset.")
+        else:
+            with st.expander(f"🚨 Anomaly buckets for {selected_label} ({len(bbox_anomalies)} total)"):
+                ba = bbox_anomalies.head(10).copy()
+                ba["bucket_ts"] = ba["bucket_ts"].astype("datetime64[us, UTC]")
+                ba["Time (UTC)"]  = ba["bucket_ts"].dt.strftime("%Y-%m-%d %H:%M")
+                ba["Direction"]   = ba["anomaly_direction"].fillna("—").str.capitalize()
+                ba["Aircraft"]    = ba["aircraft_count"]
+                ba["Baseline"]    = ba["baseline_mean_aircraft"].round(1)
+                ba["Z-score"]     = ba["z_aircraft"].apply(_fmt_z)
+                st.dataframe(
+                    ba[["Time (UTC)", "Direction", "Aircraft", "Baseline", "Z-score"]],
+                    width="stretch",
+                    hide_index=True,
+                )
 
 # ── Footer ────────────────────────────────────────────────────────────────────
 st.divider()

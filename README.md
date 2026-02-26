@@ -6,9 +6,50 @@
 [![DuckDB](https://img.shields.io/badge/DuckDB-1.4-yellow.svg)](https://duckdb.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.32%2B-red.svg)](https://streamlit.io/)
 
-A self-contained analytics-engineering portfolio project that tracks live
-air-traffic data end-to-end — from raw API calls to an interactive dashboard —
-entirely on your laptop with no cloud dependencies.
+A self-contained analytics-engineering portfolio project that ingests live
+ADS-B aircraft position data, transforms it with dbt, and surfaces traffic
+intensity and statistical anomalies in an interactive dashboard — entirely
+on your laptop with no cloud dependencies.
+
+---
+
+## Why this project exists
+
+Commercial airspace generates millions of ADS-B position reports per day.
+The OpenSky Network exposes these as a free REST API, but raw payloads are:
+
+- **Semi-structured** — 17-field state vectors with no schema guarantees
+- **Rate-limited** — anonymous access is throttled to ~one request per 5 s
+- **Snapshot-only** — each call returns the current state, not history
+
+The goal was to build a minimal but production-credible platform around
+these constraints: ingest reliably, model transparently, and surface
+actionable signal (not just counts).
+
+---
+
+## Design highlights
+
+- **Append-only raw snapshot log** — every API call produces immutable rows in `raw.opensky_states`; no in-place updates
+- **Run audit trail** — `raw.ingestion_runs` tracks every pipeline execution with status lifecycle and row counts
+- **dbt lineage** — exposures declare the Streamlit dashboard as a downstream consumer of the marts
+- **Statistical anomaly detection** — 28-day rolling z-score computed entirely in dbt SQL; no Python ML libraries
+- **Offline demo mode** — synthetic 48h timeseries with injected anomaly events; runs without network or credentials
+- **CI that runs the full pipeline** — GitHub Actions lints, tests, seeds demo data, and runs `dbt build` on every push
+
+---
+
+## Key metrics
+
+| Metric | Definition |
+|---|---|
+| **Aircraft count** | Distinct ICAO24 transponder addresses per 5-min bucket |
+| **GPS-positioned** | Subset with a valid latitude/longitude fix |
+| **On-ground count** | Aircraft reporting ground contact in latest snapshot |
+| **Baseline mean/std** | Population statistics over the trailing 28 days |
+| **Traffic z-score** | `(current − baseline_mean) / baseline_std` per bucket |
+| **Anomaly flag** | `\|z\| ≥ 3` in either the primary or positioned series |
+| **1h trend %** | `(latest − avg_preceding_1h) / avg_preceding_1h × 100` |
 
 ---
 
@@ -18,10 +59,13 @@ entirely on your laptop with no cloud dependencies.
 |---|---|
 | **API ingestion** | Typed HTTP client with exponential back-off, 429/5xx retry, optional Basic Auth |
 | **Raw → staging → marts modeling** | dbt-duckdb project with views → tables, full lineage |
-| **Data quality** | 34 dbt tests: `not_null`, `unique`, `accepted_values`, `unique_combination` |
-| **Local warehouse** | DuckDB with a typed schema, idempotent DDL, `executemany` bulk inserts |
-| **Offline / demo mode** | Fixture-based ingestion path — no network required |
-| **Streamlit product UI** | Metric cards, snapshot table, 5-min timeseries chart |
+| **Statistical analysis in SQL** | 28-day rolling z-scores and anomaly detection in dbt mart SQL |
+| **Data quality** | 50+ dbt tests: `not_null`, `unique`, `accepted_values`, `unique_combination` |
+| **Semantic layer** | MetricFlow semantic models + 3 metrics; time spine for trending |
+| **Data governance** | dbt exposure, data contract doc, CHANGELOG, VERSION |
+| **Local warehouse** | DuckDB with typed schema, idempotent DDL, `executemany` bulk inserts |
+| **Offline / demo mode** | Synthetic timeseries with baked-in anomaly events — no network required |
+| **Streamlit product UI** | Insights table with anomaly indicators, timeseries chart, anomaly event log |
 | **CI/CD** | GitHub Actions: lint → pytest → demo ingest → dbt build |
 
 ---
@@ -40,11 +84,13 @@ entirely on your laptop with no cloud dependencies.
                     │                                │                 │
                     │                    ┌───────────▼────────────┐   │
                     │                    │ dbt/                   │   │
-                    │                    │  stg_opensky_states    │   │
-                    │                    │  stg_ingestion_runs    │   │
-                    │                    │  mart_latest_snapshot  │   │
-                    │                    │  mart_timeseries_5min  │   │
-                    │                    │  mart_latest_run       │   │
+                    │                    │  stg_opensky_states         │   │
+                    │                    │  stg_ingestion_runs         │   │
+                    │                    │  mart_timeseries_5min       │   │
+                    │                    │  mart_traffic_baseline_28d  │   │
+                    │                    │  mart_traffic_anomalies     │   │
+                    │                    │  mart_latest_insights       │   │
+                    │                    │  mart_latest_run            │   │
                     │                    └───────────┬────────────┘   │
                     │                                │                 │
                     │                    ┌───────────▼────────────┐   │

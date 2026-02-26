@@ -66,6 +66,28 @@ _PEAK_AIRCRAFT: dict[str, int] = {
 # Number of distinct aircraft kept in each bbox's pool.
 _POOL_SIZE = 60
 
+# ---------------------------------------------------------------------------
+# Anomaly events (baked into demo data for interesting z-score output)
+# ---------------------------------------------------------------------------
+# Each entry: (hours_before_now, duration_minutes, traffic_multiplier).
+# A multiplier > 1 creates a spike; < 1 creates a drop.
+# Applied deterministically regardless of --seed so anomalies are always visible.
+_ANOMALY_EVENTS: list[tuple[float, int, float]] = [
+    (3.0,  25, 3.8),   # spike: intense landing-sequence / airshow overfly  3 h ago
+    (10.5, 15, 3.5),   # spike: morning rush surge                          ~10.5 h ago
+    (18.0, 20, 0.12),  # near-zero: overnight temporary airspace closure    ~18 h ago
+]
+
+
+def _event_multiplier(snap_ts: dt.datetime, now: dt.datetime) -> float:
+    """Return the traffic multiplier for *snap_ts*, or 1.0 if no event applies."""
+    for hours_before, duration_min, multiplier in _ANOMALY_EVENTS:
+        event_start = now - dt.timedelta(hours=hours_before)
+        event_end   = event_start + dt.timedelta(minutes=duration_min)
+        if event_start <= snap_ts <= event_end:
+            return multiplier
+    return 1.0
+
 # Column order must match raw.opensky_states in schema.sql exactly.
 _STATE_COLUMNS: tuple[str, ...] = (
     "ingestion_ts", "data_ts", "bbox_name", "icao24", "callsign",
@@ -271,13 +293,18 @@ def seed(
         run_id = str(uuid.uuid4())
         run_rows = 0
 
+        # Apply anomaly multiplier once per snapshot (same event window for all bboxes).
+        multiplier = _event_multiplier(snap_ts, now)
+
         state_tuples: list[tuple] = []
 
         for bbox_name in active_bboxes:
             pool = pools[bbox_name]
             bounds = BBOX_PRESETS[bbox_name]
-            n_active = _active_count(snap_ts, bbox_name)
-            active = random.sample(pool, min(n_active, len(pool)))
+            base_count = _active_count(snap_ts, bbox_name)
+            # Clamp to pool size; for spikes > pool, sample_with pool size cap.
+            n_active = max(0, min(_POOL_SIZE, int(base_count * multiplier)))
+            active = random.sample(pool, n_active)
 
             for aircraft in active:
                 _drift_aircraft(aircraft, bounds)
@@ -297,6 +324,8 @@ def seed(
         f"Done.  {total_state_rows:,} aircraft-state rows across "
         f"{len(snapshots):,} synthetic ingestion runs."
     )
+    n_events = len(_ANOMALY_EVENTS)
+    print(f"{n_events} anomaly event(s) injected — look for z-score spikes in the dashboard.")
     print(f"Run `make demo-app` (or DUCKDB_PATH={duckdb_path} make app) to view the dashboard.")
 
 

@@ -35,7 +35,7 @@ help:
 	@echo "  make watch      Continuous live ingestion every 5 min (Ctrl-C to stop)"
 	@echo "  make dbt        Run dbt deps + dbt build"
 	@echo "  make app        Launch Streamlit dashboard"
-	@echo "  make demo       Seed 24h of synthetic data → dbt build (offline)"
+	@echo "  make demo       Seed 48h of synthetic data + anomaly events → dbt build (offline)"
 	@echo "  make demo-app   Launch dashboard against the demo database"
 	@echo "  make clean      Remove .venv and build artefacts"
 	@echo ""
@@ -119,8 +119,8 @@ app:
 # ---------------------------------------------------------------------------
 
 demo:
-	@echo "→ Seeding 24 h of synthetic timeseries data …"
-	DUCKDB_PATH=$(DEMO_DB) $(PYTHON) tools/seed_demo_data.py
+	@echo "→ Seeding 48 h of synthetic timeseries data (seed=42) …"
+	DUCKDB_PATH=$(DEMO_DB) $(PYTHON) tools/seed_demo_data.py --hours 48 --seed 42
 	@echo "→ Building dbt models …"
 	DUCKDB_PATH=$(DEMO_DB) $(PYTHON) -m air_traffic_pulse dbt
 	@echo ""

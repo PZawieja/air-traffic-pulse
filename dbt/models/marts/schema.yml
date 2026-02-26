@@ -117,3 +117,131 @@ models:
 
       - name: run_duration_seconds
         description: Wall-clock duration in seconds. NULL if the run never finished.
+
+  # ── mart_traffic_baseline_28d ────────────────────────────────────────────────
+  - name: mart_traffic_baseline_28d
+    description: >
+      Rolling 28-day population statistics per bounding-box.
+      Provides the baseline mean and standard deviation used to compute
+      z-scores in mart_traffic_anomalies_5min.
+      One row per bbox_name; rebuilt on every dbt run so the window stays current.
+    columns:
+      - name: bbox_name
+        description: Bounding-box region name.
+        tests:
+          - unique
+          - not_null
+
+      - name: baseline_mean_aircraft
+        description: Mean aircraft count across all 5-minute buckets in the trailing 28-day window.
+        tests:
+          - not_null
+
+      - name: baseline_std_aircraft
+        description: >
+          Population standard deviation of aircraft_count.
+          0 when there is only one data point in the window.
+        tests:
+          - not_null
+
+      - name: baseline_mean_positioned
+        description: Mean GPS-positioned aircraft count over the trailing window.
+        tests:
+          - not_null
+
+      - name: baseline_std_positioned
+        description: Population standard deviation of positioned_aircraft_count. 0 when insufficient data.
+        tests:
+          - not_null
+
+      - name: n_buckets
+        description: Number of 5-minute buckets used to compute the baseline.
+        tests:
+          - not_null
+
+  # ── mart_traffic_anomalies_5min ──────────────────────────────────────────────
+  - name: mart_traffic_anomalies_5min
+    description: >
+      Z-score enriched version of mart_traffic_timeseries_5min.
+      Each row adds the 28-day baseline context, the computed z-scores, and an
+      is_anomaly flag based on |z| ≥ 3.
+      Same grain as mart_traffic_timeseries_5min: one row per (bbox_name, bucket_ts).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - bbox_name
+              - bucket_ts
+    columns:
+      - name: bbox_name
+        description: Bounding-box region name.
+        tests:
+          - not_null
+
+      - name: bucket_ts
+        description: Start of the 5-minute bucket (UTC).
+        tests:
+          - not_null
+
+      - name: z_aircraft
+        description: >
+          Z-score of aircraft_count relative to the 28-day baseline.
+          NULL when baseline_std_aircraft = 0 (insufficient history).
+
+      - name: z_positioned
+        description: >
+          Z-score of positioned_aircraft_count relative to the 28-day baseline.
+          NULL when baseline_std_positioned = 0.
+
+      - name: is_anomaly
+        description: >
+          TRUE when |z_aircraft| ≥ 3 or |z_positioned| ≥ 3.
+          FALSE (not NULL) when z-scores are NULL (no anomaly declared without sufficient baseline).
+        tests:
+          - not_null
+
+      - name: anomaly_direction
+        description: "'spike' when z_aircraft ≥ 3; 'drop' when z_aircraft ≤ −3; NULL otherwise."
+
+  # ── mart_latest_insights_by_bbox ─────────────────────────────────────────────
+  - name: mart_latest_insights_by_bbox
+    description: >
+      One insight row per bounding-box combining the latest observed counts,
+      the 28-day statistical baseline, the z-score for the most recent bucket,
+      and a 1-hour momentum indicator (trend_1h_pct).
+      Primary consumer: Streamlit Insights table.
+    columns:
+      - name: bbox_name
+        description: Bounding-box region name.
+        tests:
+          - unique
+          - not_null
+
+      - name: latest_bucket_ts
+        description: Timestamp of the most recent 5-minute bucket for this bbox.
+        tests:
+          - not_null
+
+      - name: latest_aircraft_count
+        description: Aircraft count in the most recent bucket.
+        tests:
+          - not_null
+
+      - name: baseline_mean_aircraft
+        description: 28-day rolling mean aircraft count used as the anomaly baseline.
+
+      - name: latest_z_aircraft
+        description: Z-score for the latest bucket. NULL when baseline std = 0.
+
+      - name: latest_is_anomaly
+        description: Whether the most recent bucket is flagged as anomalous.
+        tests:
+          - not_null
+
+      - name: latest_anomaly_direction
+        description: "'spike', 'drop', or NULL for the most recent bucket."
+
+      - name: trend_1h_pct
+        description: >
+          Percent change between the latest aircraft count and the average of
+          the preceding 12 buckets (1 hour).  NULL when insufficient data.

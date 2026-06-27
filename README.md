@@ -10,11 +10,11 @@
 
 ## Why aircraft data
 
-The anomaly detection pattern I built for revenue reporting at Shiftmove — snapshot a metric, build a rolling baseline, flag deviations, route an alert — is domain-agnostic. Air traffic over European cities gives me a live, publicly accessible data stream to demonstrate the same architecture on, without using proprietary company data.
+The anomaly detection pattern I built in the past — snapshot a metric, build a rolling baseline, flag deviations, route an alert — is domain-agnostic. Air traffic over European cities gives me a live, publicly accessible data stream to demonstrate the same architecture on, without using proprietary company data.
 
 The pattern: **observe → baseline → compare → flag → explain**.
 
-This is the same pattern behind the twice-daily CARR anomaly alerts I built in production, and the MRR drop detection that caught a Salesforce field rename before Finance noticed it.
+This is the same pattern behind the twice-daily revenue anomaly alerts I built in production, and the MRR drop detection that caught a Salesforce field rename before anyone else noticed it.
 
 ---
 
